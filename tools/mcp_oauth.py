@@ -100,7 +100,11 @@ def _get_token_dir() -> Path:
         from hermes_constants import get_hermes_home
         base = Path(get_hermes_home())
     except ImportError:
-        base = Path(os.environ.get("HERMES_HOME", str(Path.home() / ".hermes")))
+        try:
+            from hermes_bootstrap import get_project_hermes_home
+            base = Path(os.environ.get("HERMES_HOME", str(get_project_hermes_home())))
+        except ImportError:
+            base = Path(os.environ.get("HERMES_HOME", str(Path.cwd() / ".hermes-home")))
     return base / "mcp-tokens"
 
 

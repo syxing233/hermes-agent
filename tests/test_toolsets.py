@@ -32,6 +32,13 @@ class TestGetToolset:
         assert ts is not None
         assert "web_search" in ts["tools"]
 
+    def test_compliance_toolset_exists(self):
+        ts = get_toolset("compliance")
+        assert ts is not None
+        assert "compliance_review" in ts["tools"]
+        assert "compliance_get_report" in ts["tools"]
+        assert "external compliance-agent API" not in ts["description"]
+
     def test_unknown_returns_none(self):
         assert get_toolset("nonexistent") is None
 
@@ -46,6 +53,15 @@ class TestResolveToolset:
         assert "terminal" in tools
         assert "web_search" in tools
         assert "web_extract" in tools
+
+    def test_compliance_specialist_toolset(self):
+        tools = resolve_toolset("compliance-specialist")
+        assert "compliance_review" in tools
+        assert "compliance_assistant" in tools
+        assert "read_file" in tools
+        assert "skills_list" in tools
+        assert "clarify" in tools
+        assert "memory" in tools
 
     def test_cycle_detection(self):
         # Create a cycle: A includes B, B includes A

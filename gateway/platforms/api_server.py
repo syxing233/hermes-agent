@@ -397,6 +397,54 @@ class APIServerAdapter(BasePlatformAdapter):
         self._session_db: Optional[Any] = None  # Lazy-init SessionDB for session continuity
 
     @staticmethod
+    def _coerce_str_list(value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            items = [value]
+        elif isinstance(value, list):
+            items = value
+        else:
+            return []
+
+        result: list[str] = []
+        seen: set[str] = set()
+        for item in items:
+            text = str(item or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            result.append(text)
+        return result
+
+    @classmethod
+    def _build_platform_preload_prompt(cls, user_config: Dict[str, Any]) -> str:
+        """Build a non-persistent system prompt from preloaded API-server skills."""
+        skills_cfg = user_config.get("skills", {}) if isinstance(user_config, dict) else {}
+        if not isinstance(skills_cfg, dict):
+            return ""
+
+        preload_cfg = skills_cfg.get("preload", {})
+        if not isinstance(preload_cfg, dict):
+            return ""
+
+        skill_names = cls._coerce_str_list(preload_cfg.get("api_server"))
+        if not skill_names:
+            return ""
+
+        try:
+            from agent.skill_commands import build_preloaded_skills_prompt
+            prompt, loaded, missing = build_preloaded_skills_prompt(skill_names)
+            if missing:
+                logger.warning("API server preload skills missing: %s", ", ".join(missing))
+            if loaded:
+                logger.info("API server preloaded skills: %s", ", ".join(loaded))
+            return prompt.strip()
+        except Exception as exc:
+            logger.warning("Failed to build API server preload prompt: %s", exc)
+            return ""
+
+    @staticmethod
     def _parse_cors_origins(value: Any) -> tuple[str, ...]:
         """Normalize configured CORS origins into a stable tuple."""
         if not value:
@@ -535,6 +583,21 @@ class APIServerAdapter(BasePlatformAdapter):
 
         user_config = _load_gateway_config()
         enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
+        agent_cfg = user_config.get("agent", {}) if isinstance(user_config, dict) else {}
+        config_prompt = ""
+        if isinstance(agent_cfg, dict):
+            config_prompt = str(agent_cfg.get("system_prompt") or "").strip()
+        preload_prompt = self._build_platform_preload_prompt(user_config)
+        prompt_parts = [
+            part
+            for part in (
+                config_prompt,
+                preload_prompt,
+                (ephemeral_system_prompt or "").strip(),
+            )
+            if part
+        ]
+        combined_ephemeral = "\n\n".join(prompt_parts).strip()
 
         max_iterations = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
 
@@ -549,7 +612,7 @@ class APIServerAdapter(BasePlatformAdapter):
             max_iterations=max_iterations,
             quiet_mode=True,
             verbose_logging=False,
-            ephemeral_system_prompt=ephemeral_system_prompt or None,
+            ephemeral_system_prompt=combined_ephemeral or None,
             enabled_toolsets=enabled_toolsets,
             session_id=session_id,
             platform="api_server",

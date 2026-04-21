@@ -77,7 +77,7 @@ _MEMORY_THREAT_PATTERNS = [
     # Persistence via shell rc
     (r'authorized_keys', "ssh_backdoor"),
     (r'\$HOME/\.ssh|\~/\.ssh', "ssh_access"),
-    (r'\$HOME/\.hermes/\.env|\~/\.hermes/\.env', "hermes_env"),
+    (r'\$HOME/\.(?:hermes|hermes-home)/\.env|\~/\.(?:hermes|hermes-home)/\.env|\$HERMES_HOME/\.env|\$\{HERMES_HOME\}/\.env', "hermes_env"),
 ]
 
 # Subset of invisible chars for injection detection
@@ -578,7 +578,6 @@ registry.register(
     check_fn=check_memory_requirements,
     emoji="🧠",
 )
-
 
 
 

@@ -14,7 +14,7 @@ Your agent handles requests with its full toolset (terminal, file operations, we
 
 ### 1. Enable the API server
 
-Add to `~/.hermes/.env`:
+Add to `${HERMES_HOME}/.env`:
 
 ```bash
 API_SERVER_ENABLED=true

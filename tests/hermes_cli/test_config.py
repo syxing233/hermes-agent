@@ -6,6 +6,7 @@ from unittest.mock import patch, MagicMock
 
 import yaml
 
+from hermes_bootstrap import get_project_hermes_home
 from hermes_cli.config import (
     DEFAULT_CONFIG,
     get_hermes_home,
@@ -28,7 +29,7 @@ class TestGetHermesHome:
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("HERMES_HOME", None)
             home = get_hermes_home()
-            assert home == Path.home() / ".hermes"
+            assert home == get_project_hermes_home()
 
     def test_env_override(self):
         with patch.dict(os.environ, {"HERMES_HOME": "/custom/path"}):
@@ -70,6 +71,10 @@ class TestLoadConfigDefaults:
             assert "terminal" in config
             assert config["terminal"]["backend"] == "local"
             assert config["display"]["interim_assistant_messages"] is True
+            assert "compliance-cn" in config["personalities"]
+            assert config["compliance"]["artifacts"]["enabled"] is True
+            assert config["compliance"]["classification"]["primary"]["provider"] == "deepseek"
+            assert config["compliance"]["classification"]["review"]["model"] == "deepseek-chat"
 
     def test_legacy_root_level_max_turns_migrates_to_agent_config(self, tmp_path):
         with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
@@ -393,6 +398,96 @@ class TestOptionalEnvVarsRegistry:
             all_vars.extend(vars_list)
         assert "TAVILY_API_KEY" in all_vars
 
+    def test_compliance_contract_api_key_registered(self):
+        from hermes_cli.config import OPTIONAL_ENV_VARS
+
+        assert "COMPLIANCE_CONTRACT_API_KEY" in OPTIONAL_ENV_VARS
+        assert OPTIONAL_ENV_VARS["COMPLIANCE_CONTRACT_API_KEY"]["category"] == "tool"
+        assert OPTIONAL_ENV_VARS["COMPLIANCE_CONTRACT_API_KEY"]["password"] is True
+
+    def test_compliance_general_api_key_registered(self):
+        from hermes_cli.config import OPTIONAL_ENV_VARS
+
+        assert "COMPLIANCE_GENERAL_API_KEY" in OPTIONAL_ENV_VARS
+        assert OPTIONAL_ENV_VARS["COMPLIANCE_GENERAL_API_KEY"]["category"] == "tool"
+        assert OPTIONAL_ENV_VARS["COMPLIANCE_GENERAL_API_KEY"]["password"] is True
+
+    def test_compliance_handbook_api_key_registered(self):
+        from hermes_cli.config import OPTIONAL_ENV_VARS
+
+        assert "COMPLIANCE_HANDBOOK_API_KEY" in OPTIONAL_ENV_VARS
+        assert OPTIONAL_ENV_VARS["COMPLIANCE_HANDBOOK_API_KEY"]["category"] == "tool"
+        assert OPTIONAL_ENV_VARS["COMPLIANCE_HANDBOOK_API_KEY"]["password"] is True
+
+
+class TestComplianceConfigMigration:
+    def test_migrates_flat_compliance_schema_and_moves_secrets_to_env(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "_config_version": 20,
+                    "compliance": {
+                        "workflow_base_url": "https://legacy.example/v1",
+                        "contract_api_key": "legacy-contract",
+                        "general_api_key": "legacy-general",
+                        "handbook_api_key": "legacy-handbook",
+                        "classification_model": "deepseek-chat",
+                        "review_model": "deepseek-reasoner",
+                        "artifact_store_enabled": False,
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / ".env").write_text("", encoding="utf-8")
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}, clear=False):
+            migrate_config(interactive=False, quiet=True)
+            migrated = load_config()
+            env_vars = load_env()
+
+        assert migrated["_config_version"] == DEFAULT_CONFIG["_config_version"]
+        assert migrated["compliance"]["workflow"]["base_url"] == "https://legacy.example/v1"
+        assert migrated["compliance"]["classification"]["primary"]["provider"] == "deepseek"
+        assert migrated["compliance"]["classification"]["primary"]["model"] == "deepseek-chat"
+        assert migrated["compliance"]["classification"]["review"]["model"] == "deepseek-reasoner"
+        assert migrated["compliance"]["artifacts"]["enabled"] is False
+        assert env_vars["COMPLIANCE_CONTRACT_API_KEY"] == "legacy-contract"
+        assert env_vars["COMPLIANCE_GENERAL_API_KEY"] == "legacy-general"
+        assert env_vars["COMPLIANCE_HANDBOOK_API_KEY"] == "legacy-handbook"
+        assert env_vars.get("CONTRACT_API_KEY", "") == ""
+
+    def test_migrates_custom_classification_endpoint_into_named_provider(self, tmp_path):
+        config_path = tmp_path / "config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "_config_version": 20,
+                    "compliance": {
+                        "classification_model": "legacy-classifier",
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / ".env").write_text(
+            "OPENAI_BASE_URL=https://custom.example/v1\nOPENAI_API_KEY=custom-key\n",
+            encoding="utf-8",
+        )
+
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}, clear=False):
+            migrate_config(interactive=False, quiet=True)
+            migrated = load_config()
+
+        provider_cfg = migrated["providers"]["compliance-classification"]
+        assert provider_cfg["api"] == "https://custom.example/v1"
+        assert provider_cfg["key_env"] == "OPENAI_API_KEY"
+        assert migrated["compliance"]["classification"]["primary"]["provider"] == "compliance-classification"
+        assert migrated["compliance"]["classification"]["review"]["provider"] == "compliance-classification"
+
 
 class TestAnthropicTokenMigration:
     """Test that config version 8→9 clears ANTHROPIC_TOKEN."""
@@ -459,7 +554,7 @@ class TestCustomProviderCompatibility:
             migrate_config(interactive=False, quiet=True)
             raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        assert raw["_config_version"] == 18
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert raw["providers"]["openai-direct"] == {
             "api": "https://api.openai.com/v1",
             "api_key": "test-key",
@@ -606,7 +701,7 @@ class TestInterimAssistantMessageConfig:
             migrate_config(interactive=False, quiet=True)
             raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        assert raw["_config_version"] == 18
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert raw["display"]["tool_progress"] == "off"
         assert raw["display"]["interim_assistant_messages"] is True
 
@@ -626,6 +721,6 @@ class TestDiscordChannelPromptsConfig:
             migrate_config(interactive=False, quiet=True)
             raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-        assert raw["_config_version"] == 18
+        assert raw["_config_version"] == DEFAULT_CONFIG["_config_version"]
         assert raw["discord"]["auto_thread"] is True
         assert raw["discord"]["channel_prompts"] == {}

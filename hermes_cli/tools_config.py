@@ -5,7 +5,7 @@ Unified tool configuration for Hermes Agent.
 Select a platform → toggle toolsets on/off → for newly enabled tools
 that need API keys, run through provider-aware configuration.
 
-Saves per-platform tool configuration to ~/.hermes/config.yaml under
+Saves per-platform tool configuration to HERMES_HOME/config.yaml under
 the `platform_toolsets` key.
 """
 
@@ -972,7 +972,7 @@ def _configure_provider(provider: dict, config: dict):
             override_envs = provider.get("override_env_vars", [])
             if any(get_env_value(env_var) for env_var in override_envs):
                 _print_warning(
-                    "  Direct credentials are still configured and may take precedence until you remove them from ~/.hermes/.env."
+                    f"  Direct credentials are still configured and may take precedence until you remove them from {display_hermes_home()}/.env."
                 )
         return
 
@@ -1182,7 +1182,7 @@ def _reconfigure_provider(provider: dict, config: dict):
             override_envs = provider.get("override_env_vars", [])
             if any(get_env_value(env_var) for env_var in override_envs):
                 _print_warning(
-                    "  Direct credentials are still configured and may take precedence until you remove them from ~/.hermes/.env."
+                    f"  Direct credentials are still configured and may take precedence until you remove them from {display_hermes_home()}/.env."
                 )
         return
 

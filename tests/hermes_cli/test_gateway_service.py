@@ -5,6 +5,8 @@ import pwd
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 import hermes_cli.gateway as gateway_cli
 from gateway.restart import (
     DEFAULT_GATEWAY_RESTART_DRAIN_TIMEOUT,
@@ -113,46 +115,30 @@ class TestGeneratedSystemdUnits:
 
 class TestGatewayStopCleanup:
     def test_stop_only_kills_current_profile_by_default(self, tmp_path, monkeypatch):
-        """Without --all, stop uses systemd (if available) and does NOT call
-        the global kill_gateway_processes()."""
-        unit_path = tmp_path / "hermes-gateway.service"
-        unit_path.write_text("unit\n", encoding="utf-8")
-
-        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
-        monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
-        monkeypatch.setattr(gateway_cli, "get_systemd_unit_path", lambda system=False: unit_path)
-
-        service_calls = []
+        """Without --all, stop only targets the current profile process."""
         kill_calls = []
+        profile_calls = []
 
-        monkeypatch.setattr(gateway_cli, "systemd_stop", lambda system=False: service_calls.append("stop"))
         monkeypatch.setattr(
             gateway_cli,
             "kill_gateway_processes",
             lambda force=False, all_profiles=False: kill_calls.append(force) or 2,
         )
+        monkeypatch.setattr(
+            gateway_cli,
+            "stop_profile_gateway",
+            lambda: profile_calls.append(True) or True,
+        )
 
         gateway_cli.gateway_command(SimpleNamespace(gateway_command="stop"))
 
-        assert service_calls == ["stop"]
-        # Global kill should NOT be called without --all
+        assert profile_calls == [True]
         assert kill_calls == []
 
     def test_stop_all_sweeps_all_gateway_processes(self, tmp_path, monkeypatch):
-        """With --all, stop uses systemd AND calls the global kill_gateway_processes()."""
-        unit_path = tmp_path / "hermes-gateway.service"
-        unit_path.write_text("unit\n", encoding="utf-8")
-
-        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
-        monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
-        monkeypatch.setattr(gateway_cli, "get_systemd_unit_path", lambda system=False: unit_path)
-
-        service_calls = []
+        """With --all, stop sweeps local gateway processes across profiles."""
         kill_calls = []
 
-        monkeypatch.setattr(gateway_cli, "systemd_stop", lambda system=False: service_calls.append("stop"))
         monkeypatch.setattr(
             gateway_cli,
             "kill_gateway_processes",
@@ -161,7 +147,6 @@ class TestGatewayStopCleanup:
 
         gateway_cli.gateway_command(SimpleNamespace(gateway_command="stop", **{"all": True}))
 
-        assert service_calls == ["stop"]
         assert kill_calls == [False]
 
 
@@ -410,47 +395,17 @@ class TestGatewayServiceDetection:
         assert gateway_cli.supports_systemd_services() is True
 
     def test_is_service_running_checks_system_scope_when_user_scope_is_inactive(self, monkeypatch):
-        user_unit = SimpleNamespace(exists=lambda: True)
-        system_unit = SimpleNamespace(exists=lambda: True)
-
-        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
-        monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
-        monkeypatch.setattr(
-            gateway_cli,
-            "get_systemd_unit_path",
-            lambda system=False: system_unit if system else user_unit,
-        )
-
-        def fake_run(cmd, capture_output=True, text=True, **kwargs):
-            if cmd == ["systemctl", "--user", "is-active", gateway_cli.get_service_name()]:
-                return SimpleNamespace(returncode=0, stdout="inactive\n", stderr="")
-            if cmd == ["systemctl", "is-active", gateway_cli.get_service_name()]:
-                return SimpleNamespace(returncode=0, stdout="active\n", stderr="")
-            raise AssertionError(f"Unexpected command: {cmd}")
-
-        monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
+        monkeypatch.setattr(gateway_cli, "find_gateway_pids", lambda exclude_pids=None, all_profiles=False: [123])
 
         assert gateway_cli._is_service_running() is True
 
     def test_is_service_running_returns_false_when_systemctl_missing(self, monkeypatch):
-        unit = SimpleNamespace(exists=lambda: True)
-
-        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: True)
-        monkeypatch.setattr(
-            gateway_cli,
-            "get_systemd_unit_path",
-            lambda system=False: unit,
-        )
-
-        def fake_run(*args, **kwargs):
-            raise FileNotFoundError("systemctl")
-
-        monkeypatch.setattr(gateway_cli.subprocess, "run", fake_run)
+        monkeypatch.setattr(gateway_cli, "find_gateway_pids", lambda exclude_pids=None, all_profiles=False: [])
 
         assert gateway_cli._is_service_running() is False
 
 
+@pytest.mark.skip(reason="Host service management is disabled in project-local mode")
 class TestGatewaySystemServiceRouting:
     def test_systemd_restart_self_requests_graceful_restart_and_waits(self, monkeypatch, capsys):
         calls = []
@@ -656,6 +611,7 @@ class TestDetectVenvDir:
         assert result is None
 
 
+@pytest.mark.skip(reason="Host service unit generation is disabled in project-local mode")
 class TestSystemUnitHermesHome:
     """HERMES_HOME in system units must reference the target user, not root."""
 
@@ -720,6 +676,7 @@ class TestSystemUnitHermesHome:
         assert f'HERMES_HOME={hermes_home}' in unit
 
 
+@pytest.mark.skip(reason="Host service unit generation is disabled in project-local mode")
 class TestHermesHomeForTargetUser:
     """Unit tests for _hermes_home_for_target_user()."""
 
@@ -960,6 +917,7 @@ class TestProfileArg:
         result = gateway_cli._profile_arg(str(bad_profile))
         assert result == ""
 
+    @pytest.mark.skip(reason="Host service unit generation is disabled in project-local mode")
     def test_systemd_unit_includes_profile(self, tmp_path, monkeypatch):
         """generate_systemd_unit should include --profile in ExecStart for named profiles."""
         profile_dir = tmp_path / ".hermes" / "profiles" / "mybot"
@@ -971,6 +929,7 @@ class TestProfileArg:
         assert "--profile mybot" in unit
         assert "gateway run --replace" in unit
 
+    @pytest.mark.skip(reason="Host service unit generation is disabled in project-local mode")
     def test_launchd_plist_includes_profile(self, tmp_path, monkeypatch):
         """generate_launchd_plist should include --profile in ProgramArguments for named profiles."""
         profile_dir = tmp_path / ".hermes" / "profiles" / "mybot"
@@ -982,6 +941,7 @@ class TestProfileArg:
         assert "<string>--profile</string>" in plist
         assert "<string>mybot</string>" in plist
 
+    @pytest.mark.skip(reason="Host service unit generation is disabled in project-local mode")
     def test_launchd_plist_path_uses_real_user_home_not_profile_home(self, tmp_path, monkeypatch):
         profile_dir = tmp_path / ".hermes" / "profiles" / "orcha"
         profile_dir.mkdir(parents=True)
@@ -1090,59 +1050,40 @@ class TestDockerAwareGateway:
         assert len(calls) == 1
         assert "status" in calls[0]
 
-    def test_install_in_container_prints_docker_guidance(self, monkeypatch, capsys):
-        """'hermes gateway install' inside Docker exits 0 with container guidance."""
+    def test_install_is_disabled_in_project_local_mode(self, monkeypatch, capsys):
+        """'hermes gateway install' is rejected in project-local mode."""
         import pytest
-
-        monkeypatch.setattr(gateway_cli, "is_managed", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
-        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_wsl", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_container", lambda: True)
 
         args = SimpleNamespace(gateway_command="install", force=False, system=False, run_as_user=None)
         with pytest.raises(SystemExit) as exc_info:
             gateway_cli.gateway_command(args)
 
-        assert exc_info.value.code == 0
+        assert exc_info.value.code == 1
         out = capsys.readouterr().out
-        assert "Docker" in out or "docker" in out
-        assert "restart" in out.lower()
+        assert "project-local mode" in out
+        assert "gateway run" in out
 
-    def test_uninstall_in_container_prints_docker_guidance(self, monkeypatch, capsys):
-        """'hermes gateway uninstall' inside Docker exits 0 with container guidance."""
+    def test_uninstall_is_disabled_in_project_local_mode(self, monkeypatch, capsys):
+        """'hermes gateway uninstall' is rejected in project-local mode."""
         import pytest
-
-        monkeypatch.setattr(gateway_cli, "is_managed", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
-        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_container", lambda: True)
 
         args = SimpleNamespace(gateway_command="uninstall", system=False)
         with pytest.raises(SystemExit) as exc_info:
             gateway_cli.gateway_command(args)
 
-        assert exc_info.value.code == 0
+        assert exc_info.value.code == 1
         out = capsys.readouterr().out
-        assert "docker" in out.lower()
+        assert "project-local mode" in out
 
-    def test_start_in_container_prints_docker_guidance(self, monkeypatch, capsys):
-        """'hermes gateway start' inside Docker exits 0 with container guidance."""
+    def test_start_is_disabled_in_project_local_mode(self, monkeypatch, capsys):
+        """'hermes gateway start' is rejected in project-local mode."""
         import pytest
-
-        monkeypatch.setattr(gateway_cli, "is_termux", lambda: False)
-        monkeypatch.setattr(gateway_cli, "supports_systemd_services", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_macos", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_wsl", lambda: False)
-        monkeypatch.setattr(gateway_cli, "is_container", lambda: True)
 
         args = SimpleNamespace(gateway_command="start", system=False)
         with pytest.raises(SystemExit) as exc_info:
             gateway_cli.gateway_command(args)
 
-        assert exc_info.value.code == 0
+        assert exc_info.value.code == 1
         out = capsys.readouterr().out
-        assert "docker" in out.lower()
+        assert "project-local mode" in out.lower()
         assert "hermes gateway run" in out

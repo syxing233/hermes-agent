@@ -1,7 +1,7 @@
-"""Built-in boot-md hook — run ~/.hermes/BOOT.md on gateway startup.
+"""Built-in boot-md hook — run HERMES_HOME/BOOT.md on gateway startup.
 
 This hook is always registered. It silently skips if no BOOT.md exists.
-To activate, create ``~/.hermes/BOOT.md`` with instructions for the
+To activate, create ``HERMES_HOME/BOOT.md`` with instructions for the
 agent to execute on every gateway restart.
 
 Example BOOT.md::

@@ -6,11 +6,9 @@ Usage:
     hermes                     # Interactive chat (default)
     hermes chat                # Interactive chat
     hermes gateway             # Run gateway in foreground
-    hermes gateway start       # Start gateway as service
-    hermes gateway stop        # Stop gateway service
-    hermes gateway status      # Show gateway status
-    hermes gateway install     # Install gateway service
-    hermes gateway uninstall   # Uninstall gateway service
+    hermes gateway run         # Run gateway in foreground
+    hermes gateway stop        # Stop the local gateway process
+    hermes gateway status      # Show local gateway status
     hermes setup               # Interactive setup wizard
     hermes logout              # Clear stored authentication
     hermes status              # Show status of all components
@@ -36,7 +34,7 @@ Usage:
     hermes honcho migrate                  # Step-by-step migration guide: OpenClaw native → Hermes + Honcho
     hermes version             Show version
     hermes update              Update to latest version
-    hermes uninstall           Uninstall Hermes Agent
+    hermes uninstall           Reset project-local Hermes state
     hermes acp                 Run as an ACP server for editor integration
     hermes sessions browse     Interactive session picker with search
 
@@ -49,6 +47,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Optional
+
+from hermes_bootstrap import bootstrap_local_hermes_home, get_repo_root
 
 def _require_tty(command_name: str) -> None:
     """Exit with a clear error if stdin is not a terminal.
@@ -68,80 +68,28 @@ def _require_tty(command_name: str) -> None:
 
 
 # Add project root to path
-PROJECT_ROOT = Path(__file__).parent.parent.resolve()
+PROJECT_ROOT = get_repo_root()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # ---------------------------------------------------------------------------
-# Profile override — MUST happen before any hermes module import.
-#
-# Many modules cache HERMES_HOME at import time (module-level constants).
-# We intercept --profile/-p from sys.argv here and set the env var so that
-# every subsequent ``os.getenv("HERMES_HOME", ...)`` resolves correctly.
-# The flag is stripped from sys.argv so argparse never sees it.
-# Falls back to ~/.hermes/active_profile for sticky default.
+# Project-local HERMES_HOME bootstrap — MUST happen before any hermes module
+# import. Many modules cache HERMES_HOME at import time (module-level constants).
 # ---------------------------------------------------------------------------
 def _apply_profile_override() -> None:
-    """Pre-parse --profile/-p and set HERMES_HOME before module imports."""
-    argv = sys.argv[1:]
-    profile_name = None
-    consume = 0
-
-    # 1. Check for explicit -p / --profile flag
-    for i, arg in enumerate(argv):
-        if arg in ("--profile", "-p") and i + 1 < len(argv):
-            profile_name = argv[i + 1]
-            consume = 2
-            break
-        elif arg.startswith("--profile="):
-            profile_name = arg.split("=", 1)[1]
-            consume = 1
-            break
-
-    # 2. If no flag, check active_profile in the hermes root
-    if profile_name is None:
-        try:
-            from hermes_constants import get_default_hermes_root
-            active_path = get_default_hermes_root() / "active_profile"
-            if active_path.exists():
-                name = active_path.read_text().strip()
-                if name and name != "default":
-                    profile_name = name
-                    consume = 0  # don't strip anything from argv
-        except (UnicodeDecodeError, OSError):
-            pass  # corrupted file, skip
-
-    # 3. If we found a profile, resolve and set HERMES_HOME
-    if profile_name is not None:
-        try:
-            from hermes_cli.profiles import resolve_profile_env
-            hermes_home = resolve_profile_env(profile_name)
-        except (ValueError, FileNotFoundError) as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            sys.exit(1)
-        except Exception as exc:
-            # A bug in profiles.py must NEVER prevent hermes from starting
-            print(f"Warning: profile override failed ({exc}), using default", file=sys.stderr)
-            return
-        os.environ["HERMES_HOME"] = hermes_home
-        # Strip the flag from argv so argparse doesn't choke
-        if consume > 0:
-            for i, arg in enumerate(argv):
-                if arg in ("--profile", "-p"):
-                    start = i + 1  # +1 because argv is sys.argv[1:]
-                    sys.argv = sys.argv[:start] + sys.argv[start + consume:]
-                    break
-                elif arg.startswith("--profile="):
-                    start = i + 1
-                    sys.argv = sys.argv[:start] + sys.argv[start + 1:]
-                    break
+    """Resolve project-local HERMES_HOME before module imports."""
+    try:
+        bootstrap_local_hermes_home()
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 _apply_profile_override()
 
-# Load .env from ~/.hermes/.env first, then project root as dev fallback.
-# User-managed env files should override stale shell exports on restart.
-from hermes_cli.config import get_hermes_home
+# Load only the project-local Hermes .env. Runtime config must stay inside
+# this checkout's .hermes-home tree.
+from hermes_constants import get_hermes_home
 from hermes_cli.env_loader import load_hermes_dotenv
-load_hermes_dotenv(project_env=PROJECT_ROOT / '.env')
+load_hermes_dotenv(hermes_home=get_hermes_home())
 
 # Initialize centralized file logging early — all `hermes` subcommands
 # (chat, setup, gateway, config, etc.) write to agent.log + errors.log.
@@ -673,6 +621,168 @@ def _resolve_session_by_name_or_id(name_or_id: str) -> Optional[str]:
     return None
 
 
+def _format_compliance_review_result(result: dict, file_path: str, remainder: str | None = None) -> str:
+    """Format a successful compliance review result into a user message string."""
+    parts = [f"[Compliance review result for file: {file_path}]"]
+
+    if remainder and remainder.strip():
+        parts.append(f"User context: {remainder.strip()}")
+
+    summary = result.get("summary", {})
+    if isinstance(summary, dict):
+        risk_level = summary.get("risk_level", "")
+        if risk_level:
+            parts.append(f"Overall risk level: {risk_level}")
+
+    review_id = result.get("review_id")
+    if review_id:
+        parts.append(f"Review ID: {review_id}")
+
+    artifact_path = result.get("artifact_path")
+    if artifact_path:
+        parts.append(f"Full report artifact: {artifact_path}")
+
+    top_items = result.get("top_items", [])
+    if top_items:
+        parts.append("Key findings:")
+        for item in top_items:
+            check_title = item.get("check_title", "")
+            item_result = item.get("result", "")
+            reason = item.get("reason", "")
+            suggestion = item.get("suggestion", "")
+            entry = f"  - {check_title}: {item_result}"
+            if reason:
+                entry += f" | {reason}"
+            if suggestion:
+                entry += f" | Suggestion: {suggestion}"
+            parts.append(entry)
+
+    report_summary = result.get("report_summary", "")
+    if report_summary:
+        parts.append(f"\nReport summary:\n{report_summary}")
+
+    parts.append(
+        "\n[SYSTEM: The above compliance review was pre-executed for the attached file. "
+        "You should interpret and explain these results to the user. "
+        "If the user has additional questions about the findings, you can reference the "
+        f"review_id ({review_id}) or artifact_path ({artifact_path}) to load the full report.]"
+    )
+
+    return "\n".join(parts)
+
+
+def cmd_compliance_review(args):
+    """Run inline compliance review and output result as JSON or formatted text."""
+    import json
+
+    try:
+        from tools.compliance_tool import compliance_review
+    except ImportError:
+        result = {"success": False, "fallback_message": None, "error": "compliance_tool not available"}
+        print(json.dumps(result))
+        return
+
+    file_path = args.file_path
+    remainder = args.text
+
+    try:
+        result_json = compliance_review(
+            file_paths=file_path,
+            text=remainder or None,
+        )
+    except Exception as exc:
+        fallback = (
+            f"[User attached file: {file_path}]"
+            + (f"\n{remainder}" if remainder else "")
+            + "\n\n[SYSTEM: The user attached a compliance-related file. "
+            f"You MUST call the compliance_review tool with file_paths set to "
+            f'"{file_path}". Do NOT ask the user to paste text or convert '
+            "the file. The file path is accessible locally.]"
+        )
+        result = {"success": False, "fallback_message": fallback, "error": str(exc)}
+        print(json.dumps(result))
+        return
+
+    try:
+        result = json.loads(result_json)
+    except (json.JSONDecodeError, TypeError):
+        fallback = (
+            f"[User attached file: {file_path}]"
+            + (f"\n{remainder}" if remainder else "")
+            + "\n\n[SYSTEM: The user attached a compliance-related file. "
+            f"You MUST call the compliance_review tool with file_paths set to "
+            f'"{file_path}". Do NOT ask the user to paste text or convert '
+            "the file. The file path is accessible locally.]"
+        )
+        result = {"success": False, "fallback_message": fallback, "error": "non-JSON result"}
+        print(json.dumps(result))
+        return
+
+    if not result.get("success", False):
+        error_msg = result.get("error", "unknown error")
+        fallback = (
+            f"[User attached file: {file_path}]"
+            + (f"\n{remainder}" if remainder else "")
+            + "\n\n[SYSTEM: The user attached a compliance-related file. "
+            f"You MUST call the compliance_review tool with file_paths set to "
+            f'"{file_path}". Do NOT ask the user to paste text or convert '
+            "the file. The file path is accessible locally.]"
+        )
+        result = {"success": False, "fallback_message": fallback, "error": error_msg}
+        print(json.dumps(result))
+        return
+
+    formatted = _format_compliance_review_result(result, file_path, remainder)
+    result = {"success": True, "formatted_message": formatted}
+    print(json.dumps(result))
+
+
+def cmd_vision_analyze(args):
+    """Run vision analysis on an image and output result as JSON or text."""
+    import asyncio
+    import json
+
+    try:
+        from tools.vision_tools import vision_analyze_tool
+    except ImportError:
+        result = {"success": False, "error": "vision_tools not available"}
+        print(json.dumps(result))
+        return
+
+    image_url = args.image_url
+    default_prompt = (
+        "Describe everything visible in this image in thorough detail. "
+        "Include any text, code, data, objects, people, layout, colors, "
+        "and any other notable visual information."
+    )
+    user_prompt = args.prompt or default_prompt
+
+    try:
+        result_json = asyncio.run(
+            vision_analyze_tool(image_url=image_url, user_prompt=user_prompt)
+        )
+    except Exception as exc:
+        result = {"success": False, "error": str(exc)}
+        print(json.dumps(result))
+        return
+
+    try:
+        result = json.loads(result_json)
+    except (json.JSONDecodeError, TypeError):
+        result = {"success": False, "error": "non-JSON result from vision tool"}
+        print(json.dumps(result))
+        return
+
+    if result.get("success"):
+        description = result.get("analysis", "")
+        out = {"success": True, "description": description}
+    else:
+        error_msg = result.get("error", "vision analysis failed")
+        out = {"success": False, "error": error_msg}
+
+    print(json.dumps(out))
+
+
 def cmd_chat(args):
     """Run interactive chat CLI."""
     # Resolve --continue into --resume with the latest CLI session or by name
@@ -1146,7 +1256,7 @@ def select_provider_and_model(args=None):
 
     # ── Post-switch cleanup: clear stale OPENAI_BASE_URL ──────────────
     # When the user switches to a named provider (anything except "custom"),
-    # a leftover OPENAI_BASE_URL in ~/.hermes/.env can poison auxiliary
+    # a leftover OPENAI_BASE_URL in the project-local .env can poison auxiliary
     # clients that use provider:auto. Clear it proactively.  (#5161)
     if selected_provider not in ("custom", "cancel", "remove-custom") \
             and not selected_provider.startswith("custom:"):
@@ -1154,7 +1264,7 @@ def select_provider_and_model(args=None):
 
 
 def _clear_stale_openai_base_url():
-    """Remove OPENAI_BASE_URL from ~/.hermes/.env if the active provider is not 'custom'.
+    """Remove OPENAI_BASE_URL from the project-local .env if the active provider is not 'custom'.
 
     After a provider switch, a leftover OPENAI_BASE_URL causes auxiliary
     clients (compression, vision, delegation) with provider:auto to route
@@ -4434,7 +4544,7 @@ def cmd_profile(args):
     """Profile management — create, delete, list, switch, alias."""
     from hermes_cli.profiles import (
         list_profiles, create_profile, delete_profile, seed_profile_skills,
-        set_active_profile, get_active_profile_name,
+        set_active_profile, get_active_profile, get_active_profile_name,
         check_alias_collision, create_wrapper_script, remove_wrapper_script,
         _is_wrapper_dir_in_path, _get_wrapper_dir,
     )
@@ -4457,7 +4567,7 @@ def cmd_profile(args):
                 print(f"Gateway:        {'running' if p.gateway_running else 'stopped'}")
                 print(f"Skills:         {p.skill_count} installed")
                 if p.alias_path:
-                    print(f"Alias:          {p.name} → hermes -p {p.name}")
+                    print(f"Alias:          ./bin/{p.name} → hermes -p {p.name}")
                 break
         print()
         return
@@ -4465,6 +4575,15 @@ def cmd_profile(args):
     if action == "list":
         profiles = list_profiles()
         active = get_active_profile_name()
+        # `profile use <name>` updates the sticky active_profile marker, but
+        # the default launcher still runs with HERMES_HOME pointing at the
+        # project root. In that common case, prefer the sticky marker so
+        # `hermes profile list` shows the effective default profile that future
+        # runs will use, which is what the Web UI expects.
+        if active == "default":
+            sticky_active = get_active_profile()
+            if sticky_active:
+                active = sticky_active
 
         if not profiles:
             print("No profiles found.")
@@ -4479,7 +4598,7 @@ def cmd_profile(args):
             name = p.name
             model = (p.model or "—")[:26]
             gw = "running" if p.gateway_running else "stopped"
-            alias = p.name if p.alias_path else "—"
+            alias = f"./bin/{p.name}" if p.alias_path else "—"
             if p.is_default:
                 alias = "—"
             print(f"{marker}{name:<15} {model:<28} {gw:<12} {alias}")
@@ -4490,7 +4609,7 @@ def cmd_profile(args):
         try:
             set_active_profile(name)
             if name == "default":
-                print(f"Switched to: default (~/.hermes)")
+                print("Switched to: default (project-local .hermes-home)")
             else:
                 print(f"Switched to: {name}")
         except (ValueError, FileNotFoundError) as e:
@@ -4553,8 +4672,7 @@ def cmd_profile(args):
                         print(f"Wrapper created: {wrapper_path}")
                         if not _is_wrapper_dir_in_path():
                             print(f"\n⚠ {_get_wrapper_dir()} is not in your PATH.")
-                            print(f'  Add to your shell config (~/.bashrc or ~/.zshrc):')
-                            print(f'    export PATH="$HOME/.local/bin:$PATH"')
+                            print("  Run the wrapper directly, or add the repository-local bin directory to PATH.")
 
             # Profile dir for display
             try:
@@ -4564,14 +4682,16 @@ def cmd_profile(args):
 
             # Next steps
             print(f"\nNext steps:")
-            print(f"  {name} setup              Configure API keys and model")
-            print(f"  {name} chat               Start chatting")
-            print(f"  {name} gateway start      Start the messaging gateway")
+            print(f"  hermes -p {name} setup        Configure API keys and model")
+            print(f"  hermes -p {name} chat         Start chatting")
+            print(f"  hermes -p {name} gateway run  Start the messaging gateway")
+            if not no_alias:
+                print(f"  ./bin/{name} chat             Use the repository-local wrapper")
             if clone or clone_all:
                 print(f"\n  Edit {profile_dir_display}/.env for different API keys")
                 print(f"  Edit {profile_dir_display}/SOUL.md for different personality")
             else:
-                print(f"\n  ⚠ This profile has no API keys yet. Run '{name} setup' first,")
+                print(f"\n  ⚠ This profile has no API keys yet. Run 'hermes -p {name} setup' first,")
                 print(f"    or it will inherit keys from your shell environment.")
                 print(f"  Edit {profile_dir_display}/SOUL.md to customize personality")
             print()
@@ -4639,7 +4759,13 @@ def cmd_profile(args):
             if wrapper_path:
                 # If custom name, write the profile name into the wrapper
                 if custom_name:
-                    wrapper_path.write_text(f'#!/bin/sh\nexec hermes -p {name} "$@"\n')
+                    wrapper_path.write_text(
+                        '#!/bin/sh\n'
+                        'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"\n'
+                        'REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"\n'
+                        f'exec "$REPO_DIR/run-hermes-local.sh" -p {name} "$@"\n'
+                    )
+                    wrapper_path.chmod(wrapper_path.stat().st_mode | 0o111)
                 print(f"✓ Alias created: {wrapper_path}")
                 if not _is_wrapper_dir_in_path():
                     print(f"⚠ {_get_wrapper_dir()} is not in your PATH.")
@@ -4765,7 +4891,7 @@ Examples:
     hermes gateway                Run messaging gateway
     hermes -s hermes-agent-dev,github-auth
     hermes -w                     Start in isolated git worktree
-    hermes gateway install        Install gateway background service
+    hermes gateway run            Run gateway in foreground
     hermes sessions list          List past sessions
     hermes sessions browse        Interactive session picker
     hermes sessions rename ID T   Rename/title a session
@@ -4825,7 +4951,7 @@ For more help on a command:
         default=False,
         help="Include the session ID in the agent's system prompt"
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
     
     # =========================================================================
@@ -4995,17 +5121,17 @@ For more help on a command:
                              help="Replace any existing gateway instance (useful for systemd)")
     
     # gateway start
-    gateway_start = gateway_subparsers.add_parser("start", help="Start the installed systemd/launchd background service")
+    gateway_start = gateway_subparsers.add_parser("start", help="Unsupported in project-local mode (use 'run')")
     gateway_start.add_argument("--system", action="store_true", help="Target the Linux system-level gateway service")
     gateway_start.add_argument("--all", action="store_true", help="Kill ALL stale gateway processes across all profiles before starting")
     
     # gateway stop
-    gateway_stop = gateway_subparsers.add_parser("stop", help="Stop gateway service")
+    gateway_stop = gateway_subparsers.add_parser("stop", help="Stop the local gateway process")
     gateway_stop.add_argument("--system", action="store_true", help="Target the Linux system-level gateway service")
     gateway_stop.add_argument("--all", action="store_true", help="Stop ALL gateway processes across all profiles")
     
     # gateway restart
-    gateway_restart = gateway_subparsers.add_parser("restart", help="Restart gateway service")
+    gateway_restart = gateway_subparsers.add_parser("restart", help="Unsupported in project-local mode (use stop + run)")
     gateway_restart.add_argument("--system", action="store_true", help="Target the Linux system-level gateway service")
     gateway_restart.add_argument("--all", action="store_true", help="Kill ALL gateway processes across all profiles before restarting")
     
@@ -5015,13 +5141,13 @@ For more help on a command:
     gateway_status.add_argument("--system", action="store_true", help="Target the Linux system-level gateway service")
     
     # gateway install
-    gateway_install = gateway_subparsers.add_parser("install", help="Install gateway as a systemd/launchd background service")
+    gateway_install = gateway_subparsers.add_parser("install", help="Unsupported in project-local mode")
     gateway_install.add_argument("--force", action="store_true", help="Force reinstall")
     gateway_install.add_argument("--system", action="store_true", help="Install as a Linux system-level service (starts at boot)")
     gateway_install.add_argument("--run-as-user", dest="run_as_user", help="User account the Linux system service should run as")
     
     # gateway uninstall
-    gateway_uninstall = gateway_subparsers.add_parser("uninstall", help="Uninstall gateway service")
+    gateway_uninstall = gateway_subparsers.add_parser("uninstall", help="Unsupported in project-local mode")
     gateway_uninstall.add_argument("--system", action="store_true", help="Target the Linux system-level gateway service")
 
     # gateway setup
@@ -6110,13 +6236,13 @@ Examples:
     # =========================================================================
     uninstall_parser = subparsers.add_parser(
         "uninstall",
-        help="Uninstall Hermes Agent",
-        description="Remove Hermes Agent from your system. Can keep configs/data for reinstall."
+        help="Reset project-local Hermes state",
+        description="Remove only the repository-local Hermes runtime state and generated wrappers."
     )
     uninstall_parser.add_argument(
         "--full",
         action="store_true",
-        help="Full uninstall - remove everything including configs and data"
+        help="Full local reset - remove .hermes-home and generated wrappers"
     )
     uninstall_parser.add_argument(
         "--yes", "-y",
@@ -6282,6 +6408,52 @@ Examples:
         help="Filter by component: gateway, agent, tools, cli, cron",
     )
     logs_parser.set_defaults(func=cmd_logs)
+
+    # =========================================================================
+    # compliance-review subcommand (for BFF server pre-processing)
+    # =========================================================================
+    compliance_review_parser = subparsers.add_parser(
+        "compliance-review",
+        help="Run inline compliance review on a file (outputs JSON)",
+        description="Run the embedded compliance engine on a local file and output a structured JSON result. "
+                    "Used by the Web UI BFF server to pre-process compliance files before they reach the agent.",
+    )
+    compliance_review_parser.add_argument(
+        "--file-path", required=True,
+        help="Local file path to review",
+    )
+    compliance_review_parser.add_argument(
+        "--text", default=None,
+        help="Optional user context or remainder text",
+    )
+    compliance_review_parser.add_argument(
+        "--json", action="store_true", dest="json_output",
+        help="Output structured JSON (default: plain text formatted message)",
+    )
+    compliance_review_parser.set_defaults(func=cmd_compliance_review)
+
+    # =========================================================================
+    # vision-analyze subcommand (for BFF server pre-processing)
+    # =========================================================================
+    vision_analyze_parser = subparsers.add_parser(
+        "vision-analyze",
+        help="Analyze an image via vision AI (outputs JSON)",
+        description="Analyze a local image file using the vision AI tool and output a structured JSON result. "
+                    "Used by the Web UI BFF server to pre-process image attachments.",
+    )
+    vision_analyze_parser.add_argument(
+        "--image-url", required=True,
+        help="Local file path or URL of the image to analyze",
+    )
+    vision_analyze_parser.add_argument(
+        "--prompt", default=None,
+        help="Vision analysis prompt (default: thorough description)",
+    )
+    vision_analyze_parser.add_argument(
+        "--json", action="store_true", dest="json_output",
+        help="Output structured JSON (default: plain text description)",
+    )
+    vision_analyze_parser.set_defaults(func=cmd_vision_analyze)
 
     # =========================================================================
     # Parse and execute

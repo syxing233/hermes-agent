@@ -21,7 +21,7 @@ When your main LLM provider encounters errors — rate limits, server overload, 
 
 ### Configuration
 
-Add a `fallback_model` section to `~/.hermes/config.yaml`:
+Add a `fallback_model` section to `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 fallback_model:

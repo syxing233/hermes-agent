@@ -201,6 +201,12 @@ TOOLSETS = {
         "includes": []
     },
 
+    "compliance": {
+        "description": "Compliance review tools backed by Hermes's embedded compliance engine",
+        "tools": ["compliance_health", "compliance_review", "compliance_assistant", "compliance_get_report"],
+        "includes": []
+    },
+
 
     # Scenario-specific toolsets
     
@@ -214,6 +220,12 @@ TOOLSETS = {
         "description": "Safe toolkit without terminal access",
         "tools": [],
         "includes": ["web", "vision", "image_gen"]
+    },
+
+    "compliance-specialist": {
+        "description": "Compliance-focused workspace with the embedded review engine, file access, skills, clarify prompts, persistent memory, and session recall",
+        "tools": [],
+        "includes": ["compliance", "file", "skills", "session_search", "clarify", "memory", "vision"]
     },
     
     # ==========================================================================

@@ -10,7 +10,7 @@ of 4000+ models across 109+ providers.  Provides:
 
 Data resolution order (like TypeScript OpenCode):
   1. Bundled snapshot (ships with the package — offline-first)
-  2. Disk cache (~/.hermes/models_dev_cache.json)
+  2. Disk cache (HERMES_HOME/models_dev_cache.json)
   3. Network fetch (https://models.dev/api.json)
   4. Background refresh every 60 minutes
 
@@ -581,5 +581,4 @@ def get_model_info(
             return _parse_model_info(mid, mdata, mdev_id)
 
     return None
-
 

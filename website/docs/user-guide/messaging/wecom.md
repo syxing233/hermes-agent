@@ -34,7 +34,7 @@ hermes gateway setup
 
 Select **WeCom** and enter your Bot ID and Secret.
 
-Or set environment variables in `~/.hermes/.env`:
+Or set environment variables in `${HERMES_HOME}/.env`:
 
 ```bash
 WECOM_BOT_ID=your-bot-id

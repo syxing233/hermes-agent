@@ -1,8 +1,8 @@
 """``hermes logs`` — view and filter Hermes log files.
 
 Supports tailing, following, session filtering, level filtering,
-component filtering, and relative time ranges.  All log files live
-under ``~/.hermes/logs/``.
+component filtering, and relative time ranges. All log files live
+under ``HERMES_HOME/logs/``.
 
 Usage examples::
 

@@ -27,7 +27,7 @@ from pathlib import Path
 import fire
 import yaml
 
-# Load .env from ~/.hermes/.env first, then project root as dev fallback.
+# Load .env from HERMES_HOME first, then project root as dev fallback.
 # User-managed env files should override stale shell exports on restart.
 _hermes_home = get_hermes_home()
 _project_env = Path(__file__).parent / '.env'
@@ -68,7 +68,7 @@ DEFAULT_BASE_URL = OPENROUTER_BASE_URL
 
 def load_hermes_config() -> dict:
     """
-    Load configuration from ~/.hermes/config.yaml.
+    Load configuration from HERMES_HOME/config.yaml.
     
     Returns:
         dict: Configuration with model, base_url, etc.
@@ -249,7 +249,7 @@ def main(
     
     Args:
         task: The training task/goal (e.g., "Train a model on GSM8k for math")
-        model: Model to use for the agent (reads from ~/.hermes/config.yaml if not provided)
+        model: Model to use for the agent (reads from HERMES_HOME/config.yaml if not provided)
         api_key: OpenRouter API key (uses OPENROUTER_API_KEY env var if not provided)
         base_url: API base URL (reads from config or defaults to OpenRouter)
         max_iterations: Maximum agent iterations (default: 200 for long workflows)
@@ -272,7 +272,7 @@ def main(
         # Check server status
         python rl_cli.py --check-server
     """
-    # Load config from ~/.hermes/config.yaml
+    # Load config from HERMES_HOME/config.yaml
     config = load_hermes_config()
     
     # Use config values if not explicitly provided
@@ -297,7 +297,7 @@ def main(
             missing = get_missing_keys()
             if missing:
                 print(f"\n⚠️  Missing API keys: {', '.join(missing)}")
-                print("   Add them to ~/.hermes/.env")
+                print(f"   Add them to {_hermes_home}/.env")
             else:
                 print("✅ API keys configured")
         else:

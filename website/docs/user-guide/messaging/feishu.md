@@ -107,7 +107,7 @@ Select **Feishu / Lark** and fill in the prompts.
 
 ### Option B: Manual Configuration
 
-Add the following to `~/.hermes/.env`:
+Add the following to `${HERMES_HOME}/.env`:
 
 ```bash
 FEISHU_APP_ID=cli_xxx
@@ -394,7 +394,7 @@ Groups not listed in `group_rules` fall back to `default_group_policy` (defaults
 
 ## Deduplication
 
-Inbound messages are deduplicated using message IDs with a 24-hour TTL. The dedup state is persisted across restarts to `~/.hermes/feishu_seen_message_ids.json`.
+Inbound messages are deduplicated using message IDs with a 24-hour TTL. The dedup state is persisted across restarts to `${HERMES_HOME}/feishu_seen_message_ids.json`.
 
 | Setting | Env Var | Default |
 |---------|---------|---------|

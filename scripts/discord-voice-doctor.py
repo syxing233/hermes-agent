@@ -19,7 +19,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-HERMES_HOME = Path(os.getenv("HERMES_HOME", Path.home() / ".hermes"))
+from hermes_bootstrap import bootstrap_local_hermes_home
+
+bootstrap_local_hermes_home(argv=["discord-voice-doctor"])
+HERMES_HOME = Path(os.environ["HERMES_HOME"])
 ENV_FILE = HERMES_HOME / ".env"
 
 OK = "\033[92m\u2713\033[0m"

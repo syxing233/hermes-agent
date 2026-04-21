@@ -175,7 +175,7 @@ Select **Matrix** when prompted, then provide your homeserver URL, access token 
 
 ### Option B: Manual Configuration
 
-Add the following to your `~/.hermes/.env` file:
+Add the following to your `${HERMES_HOME}/.env` file:
 
 **Using an access token:**
 
@@ -206,7 +206,7 @@ MATRIX_PASSWORD=***
 MATRIX_ALLOWED_USERS=@alice:matrix.example.org
 ```
 
-Optional behavior settings in `~/.hermes/config.yaml`:
+Optional behavior settings in `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 group_sessions_per_user: true
@@ -259,7 +259,7 @@ sudo dnf install libolm-devel
 
 ### Enable E2EE
 
-Add to your `~/.hermes/.env`:
+Add to your `${HERMES_HOME}/.env`:
 
 ```bash
 MATRIX_ENCRYPTION=true
@@ -267,7 +267,7 @@ MATRIX_ENCRYPTION=true
 
 When E2EE is enabled, Hermes:
 
-- Stores encryption keys in `~/.hermes/platforms/matrix/store/` (legacy installs: `~/.hermes/matrix/store/`)
+- Stores encryption keys in `${HERMES_HOME}/platforms/matrix/store/` (legacy installs: `${HERMES_HOME}/matrix/store/`)
 - Uploads device keys on first connection
 - Decrypts incoming messages and encrypts outgoing messages automatically
 - Auto-joins encrypted rooms when invited
@@ -285,7 +285,7 @@ MATRIX_RECOVERY_KEY=EsT... your recovery key here
 On each startup, if `MATRIX_RECOVERY_KEY` is set, Hermes imports cross-signing keys from the homeserver's secure secret storage and signs the current device. This is idempotent and safe to leave enabled permanently.
 
 :::warning
-If you delete the `~/.hermes/platforms/matrix/store/` directory, the bot loses its encryption keys. You'll need to verify the device again in your Matrix client. Back up this directory if you want to preserve encrypted sessions.
+If you delete the `${HERMES_HOME}/platforms/matrix/store/` directory, the bot loses its encryption keys. You'll need to verify the device again in your Matrix client. Back up this directory if you want to preserve encrypted sessions.
 :::
 
 :::info
@@ -302,7 +302,7 @@ Type `/sethome` in any Matrix room where the bot is present. That room becomes t
 
 ### Manual Configuration
 
-Add this to your `~/.hermes/.env`:
+Add this to your `${HERMES_HOME}/.env`:
 
 ```bash
 MATRIX_HOME_ROOM=!abc123def456:matrix.example.org
@@ -391,16 +391,16 @@ changed identity keys for the same device as suspicious.
      }'
    ```
 
-   Copy the new `access_token` and update `MATRIX_ACCESS_TOKEN` in `~/.hermes/.env`.
+   Copy the new `access_token` and update `MATRIX_ACCESS_TOKEN` in `${HERMES_HOME}/.env`.
 
 2. **Delete old encryption state**:
 
    ```bash
-   rm -f ~/.hermes/platforms/matrix/store/crypto.db
-   rm -f ~/.hermes/platforms/matrix/store/crypto_store.*
+   rm -f ${HERMES_HOME}/platforms/matrix/store/crypto.db
+   rm -f ${HERMES_HOME}/platforms/matrix/store/crypto_store.*
    ```
 
-3. **Set your recovery key** (if you use cross-signing — most Element users do). Add to `~/.hermes/.env`:
+3. **Set your recovery key** (if you use cross-signing — most Element users do). Add to `${HERMES_HOME}/.env`:
 
    ```bash
    MATRIX_RECOVERY_KEY=EsT... your recovery key here
@@ -466,7 +466,7 @@ The Docker container only handles Matrix protocol + E2EE. When a message arrives
 
 Enable the API server so the host accepts incoming requests from the Docker container.
 
-Add to `~/.hermes/.env`:
+Add to `${HERMES_HOME}/.env`:
 
 ```bash
 API_SERVER_ENABLED=true
@@ -513,7 +513,7 @@ services:
       GATEWAY_PROXY_URL: "http://192.168.1.100:8642"
       GATEWAY_PROXY_KEY: "your-secret-key-here"
     volumes:
-      - ./matrix-store:/root/.hermes/platforms/matrix/store
+      - ./matrix-store:/root/.hermes-home/platforms/matrix/store
 ```
 
 **`Dockerfile`:**
@@ -590,7 +590,7 @@ Session continuity is maintained via the `X-Hermes-Session-Id` header. The host'
 
 **Cause**: Your User ID isn't in `MATRIX_ALLOWED_USERS`.
 
-**Fix**: Add your User ID to `MATRIX_ALLOWED_USERS` in `~/.hermes/.env` and restart the gateway. Use the full `@user:server` format.
+**Fix**: Add your User ID to `MATRIX_ALLOWED_USERS` in `${HERMES_HOME}/.env` and restart the gateway. Use the full `@user:server` format.
 
 ## Security
 

@@ -10,7 +10,7 @@ natively in the editor UI.
 ## Prerequisites
 
 - Hermes Agent installed and configured (`hermes setup` completed)
-- An API key / provider set up in `~/.hermes/.env` or via `hermes login`
+- An API key / provider set up in `${HERMES_HOME}/.env` or via `hermes login`
 - Python 3.11+
 
 Install the ACP extra:
@@ -53,7 +53,7 @@ Open your VS Code settings (`Ctrl+,` → click the `{}` icon for JSON) and add:
 ```
 
 Replace `/path/to/hermes-agent` with the actual path to your Hermes Agent
-installation (e.g. `~/.hermes/hermes-agent`).
+installation (e.g. `repository root`).
 
 Alternatively, if `hermes` is on your PATH, the ACP Client can discover it
 automatically via the registry directory.
@@ -147,17 +147,17 @@ approval before Hermes proceeds. This includes:
 
 Hermes Agent under ACP uses the **same configuration** as the CLI:
 
-- **API keys / providers**: `~/.hermes/.env`
-- **Agent config**: `~/.hermes/config.yaml`
-- **Skills**: `~/.hermes/skills/`
-- **Sessions**: `~/.hermes/state.db`
+- **API keys / providers**: `${HERMES_HOME}/.env`
+- **Agent config**: `${HERMES_HOME}/config.yaml`
+- **Skills**: `${HERMES_HOME}/skills/`
+- **Sessions**: `${HERMES_HOME}/state.db`
 
-You can run `hermes setup` to configure providers, or edit `~/.hermes/.env`
+You can run `hermes setup` to configure providers, or edit `${HERMES_HOME}/.env`
 directly.
 
 ### Changing the model
 
-Edit `~/.hermes/config.yaml`:
+Edit `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 model: openrouter/nous/hermes-3-llama-3.1-70b

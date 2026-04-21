@@ -26,7 +26,7 @@ Open WebUI talks to Hermes server-to-server, so you do not need `API_SERVER_CORS
 
 ### 1. Enable the API server
 
-Add to `~/.hermes/.env`:
+Add to `${HERMES_HOME}/.env`:
 
 ```bash
 API_SERVER_ENABLED=true

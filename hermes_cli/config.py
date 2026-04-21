@@ -1,9 +1,9 @@
 """
 Configuration management for Hermes Agent.
 
-Config files are stored in ~/.hermes/ for easy access:
-- ~/.hermes/config.yaml  - All settings (model, toolsets, terminal, etc.)
-- ~/.hermes/.env         - API keys and secrets
+Config files are stored in the active HERMES_HOME (project-local by default):
+- <repo>/.hermes-home/config.yaml  - All settings (model, toolsets, terminal, etc.)
+- <repo>/.hermes-home/.env         - API keys and secrets
 
 This module provides:
 - hermes config          - Show current configuration
@@ -32,6 +32,9 @@ _ENV_VAR_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _EXTRA_ENV_KEYS = frozenset({
     "OPENAI_API_KEY", "OPENAI_BASE_URL",
     "ANTHROPIC_API_KEY", "ANTHROPIC_TOKEN",
+    "WORKFLOW_BASE_URL", "CONTRACT_API_KEY", "GENERAL_API_KEY", "HANDBOOK_API_KEY",
+    "COMPLIANCE_CLASSIFICATION_MODEL", "COMPLIANCE_REVIEW_MODEL",
+    "MATERIAL_CLASSIFICATION_MODEL", "MATERIAL_CLASSIFICATION_REVIEW_MODEL",
     "DISCORD_HOME_CHANNEL", "TELEGRAM_HOME_CHANNEL",
     "SIGNAL_ACCOUNT", "SIGNAL_HTTP_URL",
     "SIGNAL_ALLOWED_USERS", "SIGNAL_GROUP_ALLOWED_USERS",
@@ -58,6 +61,7 @@ _EXTRA_ENV_KEYS = frozenset({
 import yaml
 
 from hermes_cli.colors import Colors, color
+from hermes_cli.compliance_profile import COMPLIANCE_PERSONALITY
 from hermes_cli.default_soul import DEFAULT_SOUL_MD
 
 
@@ -294,7 +298,7 @@ def _ensure_default_soul_md(home: Path) -> None:
 
 
 def ensure_hermes_home():
-    """Ensure ~/.hermes directory structure exists with secure permissions.
+    """Ensure the active HERMES_HOME directory structure exists with secure permissions.
 
     In managed mode (NixOS), dirs are created by the activation script with
     setgid + group-writable (2770). We skip mkdir and set umask(0o007) so
@@ -474,6 +478,52 @@ DEFAULT_CONFIG = {
         "max_simple_words": 28,
         "cheap_model": {},
     },
+
+    "compliance": {
+        "workflow": {
+            "base_url": "http://js2.blockelite.cn:23280/v1",
+            "timeout_seconds": 30,
+            "max_retries": 2,
+        },
+        "classification": {
+            "primary": {
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+            },
+            "review": {
+                "provider": "deepseek",
+                "model": "deepseek-chat",
+            },
+            "policy": {
+                "low_confidence_threshold": 0.78,
+                "small_review_threshold": 0.82,
+                "direct_big_min_parse_confidence": 0.45,
+                "direct_big_parsers": ["pdf_ocr", "image_ocr"],
+                "review_on_hint_conflict": True,
+                "review_on_ambiguous_types": True,
+                "max_text_chars": 6000,
+                "preview_pages": 1,
+                "cache_db_path": ".data/material_classification_cache.sqlite3",
+                "prompt_version": "material-classification-v2",
+            },
+        },
+        "parsing": {
+            "min_confidence": 0.45,
+            "min_chars": 80,
+        },
+        "hitl": {
+            "confidence_threshold": 0.55,
+            "high_risk_threshold": 1,
+        },
+        "artifacts": {
+            "enabled": True,
+            "dir": "",
+            "markdown": True,
+        },
+        "runtime": {
+            "enable_graph": False,
+        },
+    },
     
     # Auxiliary model config — provider:model for each side task.
     # Format: provider is the provider name, model is the model slug.
@@ -626,7 +676,7 @@ DEFAULT_CONFIG = {
     # "compressor" = built-in lossy summarization (default).
     # Set to a plugin name to activate an alternative engine (e.g. "lcm"
     # for Lossless Context Management).  The engine must be installed as
-    # a plugin in plugins/context_engine/<name>/ or ~/.hermes/plugins/.
+    # a plugin in plugins/context_engine/<name>/ or HERMES_HOME/plugins/.
     "context": {
         "engine": "compressor",
     },
@@ -666,7 +716,7 @@ DEFAULT_CONFIG = {
     
     # Skills — external skill directories for sharing skills across tools/agents.
     # Each path is expanded (~, ${VAR}) and resolved.  Read-only — skill creation
-    # always goes to ~/.hermes/skills/.
+    # always goes to HERMES_HOME/skills/.
     "skills": {
         "external_dirs": [],   # e.g. ["~/.agents/skills", "/shared/team-skills"]
     },
@@ -729,7 +779,9 @@ DEFAULT_CONFIG = {
     # Custom personalities — add your own entries here
     # Supports string format: {"name": "system prompt"}
     # Or dict format: {"name": {"description": "...", "system_prompt": "...", "tone": "...", "style": "..."}}
-    "personalities": {},
+    "personalities": {
+        "compliance-cn": COMPLIANCE_PERSONALITY,
+    },
 
     # Pre-exec security scanning via tirith
     "security": {
@@ -751,7 +803,7 @@ DEFAULT_CONFIG = {
         "wrap_response": True,
     },
 
-    # Logging — controls file logging to ~/.hermes/logs/.
+    # Logging — controls file logging to HERMES_HOME/logs/.
     # agent.log captures INFO+ (all agent activity); errors.log captures WARNING+.
     "logging": {
         "level": "INFO",       # Minimum level for agent.log: DEBUG, INFO, WARNING
@@ -768,7 +820,7 @@ DEFAULT_CONFIG = {
     },
 
     # Config schema version - bump this when adding new required fields
-    "_config_version": 18,
+    "_config_version": 21,
 }
 
 # =============================================================================
@@ -784,6 +836,11 @@ ENV_VARS_BY_VERSION: Dict[int, List[str]] = {
         "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_ALLOWED_USERS"],
     10: ["TAVILY_API_KEY"],
     11: ["TERMINAL_MODAL_MODE"],
+    21: [
+        "COMPLIANCE_CONTRACT_API_KEY",
+        "COMPLIANCE_GENERAL_API_KEY",
+        "COMPLIANCE_HANDBOOK_API_KEY",
+    ],
 }
 
 # Required environment variables with metadata for migration prompts.
@@ -835,6 +892,27 @@ OPTIONAL_ENV_VARS = {
         "password": False,
         "category": "provider",
         "advanced": True,
+    },
+    "COMPLIANCE_CONTRACT_API_KEY": {
+        "description": "API key for contract-specific compliance workflows",
+        "prompt": "Contract workflow API key",
+        "url": None,
+        "password": True,
+        "category": "tool",
+    },
+    "COMPLIANCE_GENERAL_API_KEY": {
+        "description": "API key for general compliance workflows",
+        "prompt": "General workflow API key",
+        "url": None,
+        "password": True,
+        "category": "tool",
+    },
+    "COMPLIANCE_HANDBOOK_API_KEY": {
+        "description": "API key for product handbook compliance workflows",
+        "prompt": "Product handbook workflow API key",
+        "url": None,
+        "password": True,
+        "category": "tool",
     },
     "GLM_API_KEY": {
         "description": "Z.AI / GLM API key (also recognized as ZAI_API_KEY / Z_AI_API_KEY)",
@@ -1873,7 +1951,7 @@ _KNOWN_ROOT_KEYS = {
     "_config_version", "model", "providers", "fallback_model",
     "fallback_providers", "credential_pool_strategies", "toolsets",
     "agent", "terminal", "display", "compression", "delegation",
-    "auxiliary", "custom_providers", "context", "memory", "gateway",
+    "auxiliary", "custom_providers", "context", "memory", "gateway", "compliance",
 }
 
 # Valid fields inside a custom_providers list entry
@@ -2318,6 +2396,41 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
                     else:
                         print("  ✓ Removed unused compression.summary_* keys")
 
+    # ── Version 20 → 21: hard-cut compliance config ownership ──
+    if current_ver < 21:
+        raw_config = read_raw_config()
+        migrated_config, env_updates, compliance_actions = migrate_legacy_compliance_config(raw_config)
+        if compliance_actions:
+            save_config(migrated_config)
+            results["config_added"].append("compliance (v21 nested schema)")
+            if not quiet:
+                print("  ✓ Migrated compliance config to nested runtime schema")
+                for action in compliance_actions:
+                    print(f"    → {action}")
+
+        env_on_disk = load_env()
+        for env_name, env_value in env_updates.items():
+            if not env_on_disk.get(env_name):
+                save_env_value(env_name, env_value)
+                results["env_added"].append(env_name)
+                if not quiet:
+                    print(f"  ✓ Saved {env_name} in project-local .env")
+
+        for legacy_env_name in (
+            "WORKFLOW_BASE_URL",
+            "CONTRACT_API_KEY",
+            "GENERAL_API_KEY",
+            "HANDBOOK_API_KEY",
+            "COMPLIANCE_CLASSIFICATION_MODEL",
+            "COMPLIANCE_REVIEW_MODEL",
+            "MATERIAL_CLASSIFICATION_MODEL",
+            "MATERIAL_CLASSIFICATION_REVIEW_MODEL",
+        ):
+            if get_env_value(legacy_env_name):
+                save_env_value(legacy_env_name, "")
+                if not quiet:
+                    print(f"  ✓ Cleared {legacy_env_name} from .env (compliance v21 contract)")
+
     if current_ver < latest_ver and not quiet:
         print(f"Config version: {current_ver} → {latest_ver}")
     
@@ -2556,9 +2669,151 @@ def _normalize_max_turns_config(config: Dict[str, Any]) -> Dict[str, Any]:
     return config
 
 
+_LEGACY_COMPLIANCE_CONFIG_KEYS = {
+    "workflow_base_url",
+    "contract_api_key",
+    "general_api_key",
+    "handbook_api_key",
+    "classification_model",
+    "review_model",
+    "enable_graph",
+    "artifact_store_enabled",
+    "artifact_store_dir",
+    "artifact_store_markdown",
+    "parse_min_confidence",
+    "parse_min_chars",
+    "hitl_confidence_threshold",
+    "hitl_high_risk_threshold",
+}
+
+_LEGACY_COMPLIANCE_ENV_KEYS = (
+    "WORKFLOW_BASE_URL",
+    "CONTRACT_API_KEY",
+    "GENERAL_API_KEY",
+    "HANDBOOK_API_KEY",
+    "COMPLIANCE_CLASSIFICATION_MODEL",
+    "COMPLIANCE_REVIEW_MODEL",
+    "MATERIAL_CLASSIFICATION_MODEL",
+    "MATERIAL_CLASSIFICATION_REVIEW_MODEL",
+)
+
+
+def _get_nested(config: Dict[str, Any], dotted_key: str) -> Any:
+    current: Any = config
+    for piece in dotted_key.split("."):
+        if not isinstance(current, dict) or piece not in current:
+            return None
+        current = current[piece]
+    return current
+
+
+def _normalize_custom_provider_key(value: str) -> str:
+    key = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return key or "custom-provider"
+
+
+def _ensure_unique_provider_key(providers: Dict[str, Any], preferred: str) -> str:
+    candidate = _normalize_custom_provider_key(preferred)
+    if candidate not in providers:
+        return candidate
+    index = 2
+    while f"{candidate}-{index}" in providers:
+        index += 1
+    return f"{candidate}-{index}"
+
+
+def migrate_legacy_compliance_config(config: Dict[str, Any]) -> tuple[Dict[str, Any], Dict[str, str], list[str]]:
+    """Normalize legacy compliance config/env into the v21 ownership contract."""
+    compliance = config.get("compliance")
+    legacy_env = {key: (get_env_value(key) or "").strip() for key in _LEGACY_COMPLIANCE_ENV_KEYS}
+    if compliance is None and not any(legacy_env.values()):
+        return config, {}, []
+    if compliance is None:
+        compliance = {}
+    if not isinstance(compliance, dict):
+        raise ValueError("config.yaml 中的 compliance 必须是字典对象")
+
+    has_legacy_env = any(legacy_env.values())
+    has_legacy_config = any(key in compliance for key in _LEGACY_COMPLIANCE_CONFIG_KEYS)
+    if not has_legacy_env and not has_legacy_config:
+        return config, {}, []
+
+    migrated = dict(config)
+    legacy_compliance = dict(compliance)
+    nested_entries = {
+        key: value for key, value in legacy_compliance.items() if key not in _LEGACY_COMPLIANCE_CONFIG_KEYS
+    }
+    normalized = _deep_merge(DEFAULT_CONFIG["compliance"], nested_entries)
+    actions: list[str] = []
+
+    def _maybe_set(path: str, value: Any) -> None:
+        if value in (None, ""):
+            return
+        if _get_nested(nested_entries, path) not in (None, "", []):
+            return
+        _set_nested(normalized, path, value)
+
+    _maybe_set("workflow.base_url", legacy_compliance.get("workflow_base_url") or legacy_env["WORKFLOW_BASE_URL"])
+    _maybe_set("classification.primary.model", legacy_compliance.get("classification_model") or legacy_env["COMPLIANCE_CLASSIFICATION_MODEL"] or legacy_env["MATERIAL_CLASSIFICATION_MODEL"])
+    _maybe_set("classification.review.model", legacy_compliance.get("review_model") or legacy_env["COMPLIANCE_REVIEW_MODEL"] or legacy_env["MATERIAL_CLASSIFICATION_REVIEW_MODEL"])
+    _maybe_set("runtime.enable_graph", legacy_compliance.get("enable_graph"))
+    _maybe_set("artifacts.enabled", legacy_compliance.get("artifact_store_enabled"))
+    _maybe_set("artifacts.dir", legacy_compliance.get("artifact_store_dir"))
+    _maybe_set("artifacts.markdown", legacy_compliance.get("artifact_store_markdown"))
+    _maybe_set("parsing.min_confidence", legacy_compliance.get("parse_min_confidence"))
+    _maybe_set("parsing.min_chars", legacy_compliance.get("parse_min_chars"))
+    _maybe_set("hitl.confidence_threshold", legacy_compliance.get("hitl_confidence_threshold"))
+    _maybe_set("hitl.high_risk_threshold", legacy_compliance.get("hitl_high_risk_threshold"))
+
+    old_classification_base = (get_env_value("OPENAI_BASE_URL") or "").strip().rstrip("/")
+    default_classification_base = "https://api.deepseek.com"
+    explicit_custom_endpoint = bool(old_classification_base and old_classification_base != default_classification_base)
+
+    if explicit_custom_endpoint:
+        providers = migrated.get("providers")
+        if not isinstance(providers, dict):
+            providers = {}
+        provider_key = "compliance-classification"
+        existing_entry = providers.get(provider_key)
+        if not isinstance(existing_entry, dict):
+            provider_key = _ensure_unique_provider_key(providers, provider_key)
+            providers[provider_key] = {
+                "name": "Compliance Classification (Migrated)",
+                "api": old_classification_base,
+                "key_env": "OPENAI_API_KEY",
+                "default_model": _get_nested(normalized, "classification.primary.model") or "deepseek-chat",
+            }
+            actions.append(f"created providers.{provider_key} from OPENAI_BASE_URL")
+        _maybe_set("classification.primary.provider", provider_key)
+        _maybe_set("classification.review.provider", provider_key)
+        migrated["providers"] = providers
+    else:
+        _maybe_set("classification.primary.provider", "deepseek")
+        _maybe_set("classification.review.provider", "deepseek")
+
+    migrated["compliance"] = normalized
+
+    env_updates: Dict[str, str] = {}
+    env_on_disk = load_env()
+    for legacy_key, new_key in (
+        ("contract_api_key", "COMPLIANCE_CONTRACT_API_KEY"),
+        ("general_api_key", "COMPLIANCE_GENERAL_API_KEY"),
+        ("handbook_api_key", "COMPLIANCE_HANDBOOK_API_KEY"),
+    ):
+        yaml_value = str(legacy_compliance.get(legacy_key) or "").strip()
+        legacy_env_value = legacy_env.get(legacy_key.upper(), "")
+        existing_value = str(env_on_disk.get(new_key) or "").strip()
+        chosen = existing_value or yaml_value or legacy_env_value
+        if chosen:
+            env_updates[new_key] = chosen
+
+    actions.append("migrated compliance config to nested schema")
+    return migrated, env_updates, actions
+
+
 
 def read_raw_config() -> Dict[str, Any]:
-    """Read ~/.hermes/config.yaml as-is, without merging defaults or migrating.
+    """Read HERMES_HOME/config.yaml as-is, without merging defaults or migrating.
 
     Returns the raw YAML dict, or ``{}`` if the file doesn't exist or can't
     be parsed.  Use this for lightweight config reads where you just need a
@@ -2576,7 +2831,7 @@ def read_raw_config() -> Dict[str, Any]:
 
 
 def load_config() -> Dict[str, Any]:
-    """Load configuration from ~/.hermes/config.yaml."""
+    """Load configuration from HERMES_HOME/config.yaml."""
     import copy
     ensure_hermes_home()
     config_path = get_config_path()
@@ -2700,7 +2955,7 @@ _COMMENTED_SECTIONS = """
 
 
 def save_config(config: Dict[str, Any]):
-    """Save configuration to ~/.hermes/config.yaml."""
+    """Save configuration to HERMES_HOME/config.yaml."""
     if is_managed():
         managed_error("save configuration")
         return
@@ -2729,7 +2984,7 @@ def save_config(config: Dict[str, Any]):
 
 
 def load_env() -> Dict[str, str]:
-    """Load environment variables from ~/.hermes/.env.
+    """Load environment variables from HERMES_HOME/.env.
 
     Sanitizes lines before parsing so that corrupted files (e.g.
     concatenated KEY=VALUE pairs on a single line) are handled
@@ -2773,6 +3028,8 @@ def _sanitize_env_lines(lines: list) -> list:
     # Done inside the function so OPTIONAL_ENV_VARS is guaranteed to be defined.
     known_keys = set(OPTIONAL_ENV_VARS.keys()) | _EXTRA_ENV_KEYS
 
+    known_keys = sorted(known_keys, key=len, reverse=True)
+
     sanitized: list[str] = []
     for line in lines:
         raw = line.rstrip("\r\n")
@@ -2786,12 +3043,20 @@ def _sanitize_env_lines(lines: list) -> list:
         # Detect concatenated KEY=VALUE pairs on one line.
         # Search for known KEY= patterns at any position in the line.
         split_positions = []
-        for key_name in known_keys:
-            needle = key_name + "="
-            idx = stripped.find(needle)
-            while idx >= 0:
-                split_positions.append(idx)
-                idx = stripped.find(needle, idx + len(needle))
+        occupied_key_ranges: list[tuple[int, int]] = []
+        for idx in range(len(stripped)):
+            match_len = 0
+            for key_name in known_keys:
+                needle = key_name + "="
+                if stripped.startswith(needle, idx):
+                    match_len = len(needle)
+                    break
+            if not match_len:
+                continue
+            if any(start <= idx < end for start, end in occupied_key_ranges):
+                continue
+            split_positions.append(idx)
+            occupied_key_ranges.append((idx, idx + match_len))
 
         if len(split_positions) > 1:
             split_positions.sort()
@@ -2809,7 +3074,7 @@ def _sanitize_env_lines(lines: list) -> list:
 
 
 def sanitize_env_file() -> int:
-    """Read, sanitize, and rewrite ~/.hermes/.env in place.
+    """Read, sanitize, and rewrite HERMES_HOME/.env in place.
 
     Returns the number of lines that were fixed (concatenation splits +
     placeholder removals).  Returns 0 when no changes are needed.
@@ -2895,7 +3160,7 @@ def _check_non_ascii_credential(key: str, value: str) -> str:
 
 
 def save_env_value(key: str, value: str):
-    """Save or update a value in ~/.hermes/.env."""
+    """Save or update a value in HERMES_HOME/.env."""
     if is_managed():
         managed_error(f"set {key}")
         return
@@ -2965,7 +3230,7 @@ def save_env_value(key: str, value: str):
 
 
 def remove_env_value(key: str) -> bool:
-    """Remove a key from ~/.hermes/.env and os.environ.
+    """Remove a key from HERMES_HOME/.env and os.environ.
 
     Returns True if the key was found and removed, False otherwise.
     """
@@ -3052,7 +3317,7 @@ def save_env_value_secure(key: str, value: str) -> Dict[str, Any]:
 
 
 def reload_env() -> int:
-    """Re-read ~/.hermes/.env into os.environ. Returns count of vars updated.
+    """Re-read HERMES_HOME/.env into os.environ. Returns count of vars updated.
 
     Adds/updates vars that changed and removes vars that were deleted from
     the .env file (but only vars known to Hermes — OPTIONAL_ENV_VARS and
@@ -3074,7 +3339,7 @@ def reload_env() -> int:
 
 
 def get_env_value(key: str) -> Optional[str]:
-    """Get a value from ~/.hermes/.env or environment."""
+    """Get a value from HERMES_HOME/.env or environment."""
     # Check environment first
     if key in os.environ:
         return os.environ[key]

@@ -26,7 +26,7 @@ Hermes Agent works with any OpenAI-compatible API. Supported providers include:
 - **MiniMax** — global and China endpoints
 - **Local models** — via [Ollama](https://ollama.com/), [vLLM](https://docs.vllm.ai/), [llama.cpp](https://github.com/ggerganov/llama.cpp), [SGLang](https://github.com/sgl-project/sglang), or any OpenAI-compatible server
 
-Set your provider with `hermes model` or by editing `~/.hermes/.env`. See the [Environment Variables](./environment-variables.md) reference for all provider keys.
+Set your provider with `hermes model` or by editing `${HERMES_HOME}/.env`. See the [Environment Variables](./environment-variables.md) reference for all provider keys.
 
 ### Does it work on Windows?
 
@@ -52,7 +52,7 @@ Important caveat: the full `.[all]` extra is not currently available on Android 
 
 ### Is my data sent anywhere?
 
-API calls go **only to the LLM provider you configure** (e.g., OpenRouter, your local Ollama instance). Hermes Agent does not collect telemetry, usage data, or analytics. Your conversations, memory, and skills are stored locally in `~/.hermes/`.
+API calls go **only to the LLM provider you configure** (e.g., OpenRouter, your local Ollama instance). Hermes Agent does not collect telemetry, usage data, or analytics. Your conversations, memory, and skills are stored locally in `${HERMES_HOME}/`.
 
 ### Can I use it offline / with local models?
 
@@ -230,7 +230,7 @@ hermes config set OPENROUTER_API_KEY sk-or-v1-xxxxxxxxxxxx
 ```
 
 :::warning
-Make sure the key matches the provider. An OpenAI key won't work with OpenRouter and vice versa. Check `~/.hermes/.env` for conflicting entries.
+Make sure the key matches the provider. An OpenAI key won't work with OpenRouter and vice versa. Check `${HERMES_HOME}/.env` for conflicting entries.
 :::
 
 #### Model not available / model not found
@@ -281,7 +281,7 @@ Look at the CLI startup line — it shows the detected context length (e.g., `�
 To fix context detection, set it explicitly:
 
 ```yaml
-# In ~/.hermes/config.yaml
+# In ${HERMES_HOME}/config.yaml
 model:
   default: your-model-name
   context_length: 131072  # your model's actual context window
@@ -359,7 +359,7 @@ hermes gateway status
 hermes gateway start
 
 # Check logs for errors
-cat ~/.hermes/logs/gateway.log | tail -50
+cat ${HERMES_HOME}/logs/gateway.log | tail -50
 ```
 
 #### Messages not delivering
@@ -368,7 +368,7 @@ cat ~/.hermes/logs/gateway.log | tail -50
 
 **Solution:**
 - Verify your bot token is valid with `hermes gateway setup`
-- Check gateway logs: `cat ~/.hermes/logs/gateway.log | tail -50`
+- Check gateway logs: `cat ${HERMES_HOME}/logs/gateway.log | tail -50`
 - For webhook-based platforms (Slack, WhatsApp), ensure your server is publicly accessible
 
 #### Allowlist confusion — who can talk to the bot?
@@ -383,7 +383,7 @@ cat ~/.hermes/logs/gateway.log | tail -50
 | **DM pairing** | First user to message in DM claims exclusive access |
 | **Open** | Anyone can interact (not recommended for production) |
 
-Configure in `~/.hermes/config.yaml` under your gateway's settings. See the [Messaging docs](../user-guide/messaging/index.md).
+Configure in `${HERMES_HOME}/config.yaml` under your gateway's settings. See the [Messaging docs](../user-guide/messaging/index.md).
 
 #### Gateway won't start
 
@@ -416,7 +416,7 @@ tmux new -s hermes 'hermes gateway run'
 # Reattach later: tmux attach -t hermes
 
 # Option 3: Background via nohup
-nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &
+nohup hermes gateway run > ${HERMES_HOME}/logs/gateway.log 2>&1 &
 ```
 
 If you want to try systemd anyway, make sure it's enabled:
@@ -512,7 +512,7 @@ hermes chat --continue
 **Solution:**
 ```bash
 # Ensure MCP dependencies are installed (already included in standard install)
-cd ~/.hermes/hermes-agent && uv pip install -e ".[mcp]"
+cd repository root && uv pip install -e ".[mcp]"
 
 # For npm-based servers, ensure Node.js is available
 node --version
@@ -522,7 +522,7 @@ npx --version
 npx -y @modelcontextprotocol/server-filesystem /tmp
 ```
 
-Verify your `~/.hermes/config.yaml` MCP configuration:
+Verify your `${HERMES_HOME}/config.yaml` MCP configuration:
 ```yaml
 mcp_servers:
   filesystem:
@@ -573,7 +573,7 @@ If an MCP server crashes mid-request, Hermes will report a timeout. Check the se
 
 ### How do profiles differ from just setting HERMES_HOME?
 
-Profiles are a managed layer on top of `HERMES_HOME`. You *could* manually set `HERMES_HOME=/some/path` before every command, but profiles handle all the plumbing for you: creating the directory structure, generating shell aliases (`hermes-work`), tracking the active profile in `~/.hermes/active_profile`, and syncing skill updates across all profiles automatically. They also integrate with tab completion so you don't have to remember paths.
+Profiles are a managed layer on top of `HERMES_HOME`. You *could* manually set `HERMES_HOME=/some/path` before every command, but profiles handle all the plumbing for you: creating the directory structure, generating shell aliases (`hermes-work`), tracking the active profile in `${HERMES_HOME}/active_profile`, and syncing skill updates across all profiles automatically. They also integrate with tab completion so you don't have to remember paths.
 
 ### Can two profiles share the same bot token?
 
@@ -603,7 +603,7 @@ The imported profile will have all config, memories, sessions, and skills from t
 
 ### How many profiles can I run?
 
-There is no hard limit. Each profile is just a directory under `~/.hermes/profiles/`. The practical limit depends on your disk space and how many concurrent gateways your system can handle (each gateway is a lightweight Python process). Running dozens of profiles is fine; each idle profile uses no resources.
+There is no hard limit. Each profile is just a directory under `${HERMES_HOME}/profiles/`. The practical limit depends on your disk space and how many concurrent gateways your system can handle (each gateway is a lightweight Python process). Running dozens of profiles is fine; each idle profile uses no resources.
 
 ---
 
@@ -613,7 +613,7 @@ There is no hard limit. Each profile is just a directory under `~/.hermes/profil
 
 **Scenario:** You use GPT-5.4 as your daily driver, but Gemini or Grok writes better social media content. Manually switching models every time is tedious.
 
-**Solution: Delegation config.** Hermes can route subagents to a different model automatically. Set this in `~/.hermes/config.yaml`:
+**Solution: Delegation config.** Hermes can route subagents to a different model automatically. Set this in `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 delegation:
@@ -722,10 +722,10 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
    curl -fsSL https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh | bash
    ```
 
-2. Copy your entire `~/.hermes/` directory **except** the `hermes-agent` subdirectory (that's the code repo — the new install has its own):
+2. Copy your entire `${HERMES_HOME}/` directory **except** the `hermes-agent` subdirectory (that's the code repo — the new install has its own):
    ```bash
    # On the source machine
-   rsync -av --exclude='hermes-agent' ~/.hermes/ newmachine:~/.hermes/
+   rsync -av --exclude='hermes-agent' ${HERMES_HOME}/ newmachine:${HERMES_HOME}/
    ```
 
    Or use profile export/import:
@@ -739,7 +739,7 @@ Skills with very long descriptions are truncated to 40 characters in the Telegra
 
 3. On the new machine, run `hermes setup` to verify API keys and provider config are working. Re-authenticate any messaging platforms (especially WhatsApp, which uses QR pairing).
 
-The `~/.hermes/` directory contains everything: `config.yaml`, `.env`, `SOUL.md`, `memories/`, `skills/`, `state.db` (sessions), `cron/`, and any custom plugins. The code itself lives in `~/.hermes/hermes-agent/` and is installed fresh.
+The `${HERMES_HOME}/` directory contains everything: `config.yaml`, `.env`, `SOUL.md`, `memories/`, `skills/`, `state.db` (sessions), `cron/`, and any custom plugins. The code itself lives in `repository root/` and is installed fresh.
 
 ### Permission denied when reloading shell after install
 

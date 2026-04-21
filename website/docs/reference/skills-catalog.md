@@ -6,7 +6,7 @@ description: "Catalog of bundled skills that ship with Hermes Agent"
 
 # Bundled Skills Catalog
 
-Hermes ships with a large built-in skill library copied into `~/.hermes/skills/` on install. This page catalogs the bundled skills that live in the repository under `skills/`.
+Hermes ships with a large built-in skill library copied into `${HERMES_HOME}/skills/` on install. This page catalogs the bundled skills that live in the repository under `skills/`.
 
 ## apple
 
@@ -288,7 +288,7 @@ Skills for interacting with social platforms — posting, reading, monitoring, a
 | Skill | Description | Path |
 |-------|-------------|------|
 | `code-review` | Guidelines for performing thorough code reviews with security and quality focus | `software-development/code-review` |
-| `plan` | Plan mode for Hermes — inspect context, write a markdown plan into `.hermes/plans/` in the active workspace/backend working directory, and do not execute the work. | `software-development/plan` |
+| `plan` | Plan mode for Hermes — inspect context, write a markdown plan into the workspace-local plan directory in the active workspace/backend working directory, and do not execute the work. | `software-development/plan` |
 | `requesting-code-review` | Use when completing tasks, implementing major features, or before merging. Validates work meets requirements through systematic review process. | `software-development/requesting-code-review` |
 | `subagent-driven-development` | Use when executing implementation plans with independent tasks. Dispatches fresh delegate_task per task with two-stage review (spec compliance then code quality). | `software-development/subagent-driven-development` |
 | `systematic-debugging` | Use when encountering any bug, test failure, or unexpected behavior. 4-phase root cause investigation — NO fixes without understanding the problem first. | `software-development/systematic-debugging` |

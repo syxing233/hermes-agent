@@ -845,13 +845,14 @@ class TestProfileRestoration:
 
     def test_import_creates_profile_wrappers(self, tmp_path, monkeypatch):
         """Import auto-creates wrapper scripts for restored profiles."""
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        hermes_home = repo_root / ".hermes-home"
+        hermes_home.mkdir(parents=True)
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        # Mock the wrapper dir to be inside tmp_path
-        wrapper_dir = tmp_path / ".local" / "bin"
+        wrapper_dir = repo_root / "bin"
         wrapper_dir.mkdir(parents=True)
 
         zip_path = tmp_path / "backup.zip"
@@ -877,16 +878,18 @@ class TestProfileRestoration:
 
         # Wrappers should contain the right content
         coder_wrapper = (wrapper_dir / "coder").read_text()
-        assert "hermes -p coder" in coder_wrapper
+        assert 'run-hermes-local.sh" -p coder' in coder_wrapper
 
     def test_import_skips_profile_dirs_without_config(self, tmp_path, monkeypatch):
         """Import doesn't create wrappers for profile dirs without config."""
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        hermes_home = repo_root / ".hermes-home"
+        hermes_home.mkdir(parents=True)
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
-        wrapper_dir = tmp_path / ".local" / "bin"
+        wrapper_dir = repo_root / "bin"
         wrapper_dir.mkdir(parents=True)
 
         zip_path = tmp_path / "backup.zip"
@@ -907,10 +910,12 @@ class TestProfileRestoration:
 
     def test_import_without_profiles_module(self, tmp_path, monkeypatch):
         """Import gracefully handles missing profiles module (fresh install)."""
-        hermes_home = tmp_path / ".hermes"
-        hermes_home.mkdir()
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        hermes_home = repo_root / ".hermes-home"
+        hermes_home.mkdir(parents=True)
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
         monkeypatch.setenv("HERMES_HOME", str(hermes_home))
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
         zip_path = tmp_path / "backup.zip"
         self._make_backup_zip(zip_path, {

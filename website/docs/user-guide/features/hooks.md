@@ -10,7 +10,7 @@ Hermes has two hook systems that run custom code at key lifecycle points:
 
 | System | Registered via | Runs in | Use case |
 |--------|---------------|---------|----------|
-| **[Gateway hooks](#gateway-event-hooks)** | `HOOK.yaml` + `handler.py` in `~/.hermes/hooks/` | Gateway only | Logging, alerts, webhooks |
+| **[Gateway hooks](#gateway-event-hooks)** | `HOOK.yaml` + `handler.py` in `${HERMES_HOME}/hooks/` | Gateway only | Logging, alerts, webhooks |
 | **[Plugin hooks](#plugin-hooks)** | `ctx.register_hook()` in a [plugin](/docs/user-guide/features/plugins) | CLI + Gateway | Tool interception, metrics, guardrails |
 
 Both systems are non-blocking — errors in any hook are caught and logged, never crashing the agent.
@@ -21,10 +21,10 @@ Gateway hooks fire automatically during gateway operation (Telegram, Discord, Sl
 
 ### Creating a Hook
 
-Each hook is a directory under `~/.hermes/hooks/` containing two files:
+Each hook is a directory under `${HERMES_HOME}/hooks/` containing two files:
 
 ```text
-~/.hermes/hooks/
+${HERMES_HOME}/hooks/
 └── my-hook/
     ├── HOOK.yaml      # Declares which events to listen for
     └── handler.py     # Python handler function
@@ -90,9 +90,9 @@ Handlers registered for `command:*` fire for any `command:` event (`command:mode
 
 #### Boot Checklist (BOOT.md) — Built-in
 
-The gateway ships with a built-in `boot-md` hook that looks for `~/.hermes/BOOT.md` on every startup. If the file exists, the agent runs its instructions in a background session. No installation needed — just create the file.
+The gateway ships with a built-in `boot-md` hook that looks for `${HERMES_HOME}/BOOT.md` on every startup. If the file exists, the agent runs its instructions in a background session. No installation needed — just create the file.
 
-**Create `~/.hermes/BOOT.md`:**
+**Create `${HERMES_HOME}/BOOT.md`:**
 
 ```markdown
 # Startup Checklist
@@ -113,7 +113,7 @@ No BOOT.md? The hook silently skips — zero overhead. Create the file whenever 
 Send yourself a message when the agent takes more than 10 steps:
 
 ```yaml
-# ~/.hermes/hooks/long-task-alert/HOOK.yaml
+# ${HERMES_HOME}/hooks/long-task-alert/HOOK.yaml
 name: long-task-alert
 description: Alert when agent is taking many steps
 events:
@@ -121,7 +121,7 @@ events:
 ```
 
 ```python
-# ~/.hermes/hooks/long-task-alert/handler.py
+# ${HERMES_HOME}/hooks/long-task-alert/handler.py
 import os
 import httpx
 
@@ -146,7 +146,7 @@ async def handle(event_type: str, context: dict):
 Track which slash commands are used:
 
 ```yaml
-# ~/.hermes/hooks/command-logger/HOOK.yaml
+# ${HERMES_HOME}/hooks/command-logger/HOOK.yaml
 name: command-logger
 description: Log slash command usage
 events:
@@ -154,7 +154,7 @@ events:
 ```
 
 ```python
-# ~/.hermes/hooks/command-logger/handler.py
+# ${HERMES_HOME}/hooks/command-logger/handler.py
 import json
 from datetime import datetime
 from pathlib import Path
@@ -179,7 +179,7 @@ def handle(event_type: str, context: dict):
 POST to an external service on new sessions:
 
 ```yaml
-# ~/.hermes/hooks/session-webhook/HOOK.yaml
+# ${HERMES_HOME}/hooks/session-webhook/HOOK.yaml
 name: session-webhook
 description: Notify external service on new sessions
 events:
@@ -188,7 +188,7 @@ events:
 ```
 
 ```python
-# ~/.hermes/hooks/session-webhook/handler.py
+# ${HERMES_HOME}/hooks/session-webhook/handler.py
 import httpx
 
 WEBHOOK_URL = "https://your-service.example.com/hermes-events"
@@ -203,7 +203,7 @@ async def handle(event_type: str, context: dict):
 
 ### How It Works
 
-1. On gateway startup, `HookRegistry.discover_and_load()` scans `~/.hermes/hooks/`
+1. On gateway startup, `HookRegistry.discover_and_load()` scans `${HERMES_HOME}/hooks/`
 2. Each subdirectory with `HOOK.yaml` + `handler.py` is loaded dynamically
 3. Handlers are registered for their declared events
 4. At each lifecycle point, `hooks.emit()` fires all matching handlers

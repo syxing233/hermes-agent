@@ -3,20 +3,19 @@ Profile management for multiple isolated Hermes instances.
 
 Each profile is a fully independent HERMES_HOME directory with its own
 config.yaml, .env, memory, sessions, skills, gateway, cron, and logs.
-Profiles live under ``~/.hermes/profiles/<name>/`` by default.
+Profiles live under the project-local ``.hermes-home/profiles/<name>/``.
 
-The "default" profile is ``~/.hermes`` itself — backward compatible,
-zero migration needed.
+The "default" profile is the project-local ``.hermes-home`` root.
 
 Usage::
 
     hermes profile create coder          # fresh profile + bundled skills
     hermes profile create coder --clone  # also copy config, .env, SOUL.md
     hermes profile create coder --clone-all  # full copy of source profile
-    coder chat                           # use via wrapper alias
+    ./bin/coder chat                     # use via local wrapper alias
     hermes -p coder chat                 # or via flag
     hermes profile use coder             # set as sticky default
-    hermes profile delete coder          # remove profile + alias + service
+    hermes profile delete coder          # remove profile + alias
 """
 
 import json
@@ -29,6 +28,15 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import List, Optional
+
+from hermes_bootstrap import (
+    get_active_profile_path,
+    get_profile_home,
+    get_profiles_root,
+    get_project_hermes_home,
+    get_project_wrapper_dir,
+    validate_profile_name as _validate_profile_name,
+)
 
 _PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
@@ -71,7 +79,7 @@ _CLONE_ALL_STRIP = [
     "processes.json",
 ]
 
-# Directories/files to exclude when exporting the default (~/.hermes) profile.
+# Directories/files to exclude when exporting the default project-local profile.
 # The default profile contains infrastructure (repo checkout, worktrees, DBs,
 # caches, binaries) that named profiles don't have.  We exclude those so the
 # export is a portable, reasonable-size archive of actual profile data.
@@ -118,38 +126,23 @@ _HERMES_SUBCOMMANDS = frozenset({
 # ---------------------------------------------------------------------------
 
 def _get_profiles_root() -> Path:
-    """Return the directory where named profiles are stored.
-
-    Anchored to the hermes root, NOT to the current HERMES_HOME
-    (which may itself be a profile).  This ensures ``coder profile list``
-    can see all profiles.
-
-    In Docker/custom deployments where HERMES_HOME points outside
-    ``~/.hermes``, profiles live under ``HERMES_HOME/profiles/`` so
-    they persist on the mounted volume.
-    """
-    return _get_default_hermes_home() / "profiles"
+    """Return the directory where named project-local profiles are stored."""
+    return get_profiles_root()
 
 
 def _get_default_hermes_home() -> Path:
-    """Return the default (pre-profile) HERMES_HOME path.
-
-    In standard deployments this is ``~/.hermes``.
-    In Docker/custom deployments where HERMES_HOME is outside ``~/.hermes``
-    (e.g. ``/opt/data``), returns HERMES_HOME directly.
-    """
-    from hermes_constants import get_default_hermes_root
-    return get_default_hermes_root()
+    """Return the default project-local HERMES_HOME path."""
+    return get_project_hermes_home()
 
 
 def _get_active_profile_path() -> Path:
     """Return the path to the sticky active_profile file."""
-    return _get_default_hermes_home() / "active_profile"
+    return get_active_profile_path()
 
 
 def _get_wrapper_dir() -> Path:
-    """Return the directory for wrapper scripts."""
-    return Path.home() / ".local" / "bin"
+    """Return the repository-local directory for wrapper scripts."""
+    return get_project_wrapper_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -158,20 +151,12 @@ def _get_wrapper_dir() -> Path:
 
 def validate_profile_name(name: str) -> None:
     """Raise ``ValueError`` if *name* is not a valid profile identifier."""
-    if name == "default":
-        return  # special alias for ~/.hermes
-    if not _PROFILE_ID_RE.match(name):
-        raise ValueError(
-            f"Invalid profile name {name!r}. Must match "
-            f"[a-z0-9][a-z0-9_-]{{0,63}}"
-        )
+    _validate_profile_name(name)
 
 
 def get_profile_dir(name: str) -> Path:
     """Resolve a profile name to its HERMES_HOME directory."""
-    if name == "default":
-        return _get_default_hermes_home()
-    return _get_profiles_root() / name
+    return get_profile_home(name)
 
 
 def profile_exists(name: str) -> bool:
@@ -219,13 +204,13 @@ def check_alias_collision(name: str) -> Optional[str]:
 
 
 def _is_wrapper_dir_in_path() -> bool:
-    """Check if ~/.local/bin is in PATH."""
+    """Check if the repository-local bin directory is in PATH."""
     wrapper_dir = str(_get_wrapper_dir())
     return wrapper_dir in os.environ.get("PATH", "").split(os.pathsep)
 
 
 def create_wrapper_script(name: str) -> Optional[Path]:
-    """Create a shell wrapper script at ~/.local/bin/<name>.
+    """Create a project-local shell wrapper script at ``./bin/<name>``.
 
     Returns the path to the created wrapper, or None if creation failed.
     """
@@ -238,7 +223,12 @@ def create_wrapper_script(name: str) -> Optional[Path]:
 
     wrapper_path = wrapper_dir / name
     try:
-        wrapper_path.write_text(f'#!/bin/sh\nexec hermes -p {name} "$@"\n')
+        wrapper_path.write_text(
+            '#!/bin/sh\n'
+            'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"\n'
+            'REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"\n'
+            f'exec "$REPO_DIR/run-hermes-local.sh" -p {name} "$@"\n'
+        )
         wrapper_path.chmod(wrapper_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
         return wrapper_path
     except OSError as e:
@@ -410,7 +400,7 @@ def create_profile(
 
     if name == "default":
         raise ValueError(
-            "Cannot create a profile named 'default' — it is the built-in profile (~/.hermes)."
+            "Cannot create a profile named 'default' — it is the built-in project-local profile."
         )
 
     profile_dir = get_profile_dir(name)
@@ -506,10 +496,9 @@ def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict
 
 
 def delete_profile(name: str, yes: bool = False) -> Path:
-    """Delete a profile, its wrapper script, and its gateway service.
+    """Delete a profile, its wrapper script, and its local gateway state.
 
-    Stops the gateway if running. Disables systemd/launchd service first
-    to prevent auto-restart.
+    Stops the local gateway process if running.
 
     Returns the path that was removed.
     """
@@ -517,7 +506,7 @@ def delete_profile(name: str, yes: bool = False) -> Path:
 
     if name == "default":
         raise ValueError(
-            "Cannot delete the default profile (~/.hermes).\n"
+            "Cannot delete the default project-local profile.\n"
             "To remove everything, use: hermes uninstall"
         )
 
@@ -541,7 +530,7 @@ def delete_profile(name: str, yes: bool = False) -> Path:
         "All config, API keys, memories, sessions, skills, cron jobs",
     ]
 
-    # Check for service
+    # Check for local wrapper
     wrapper_path = _get_wrapper_dir() / name
     has_wrapper = wrapper_path.exists()
     if has_wrapper:
@@ -565,7 +554,7 @@ def delete_profile(name: str, yes: bool = False) -> Path:
             print("Cancelled.")
             return profile_dir
 
-    # 1. Disable service (prevents auto-restart)
+    # 1. Cleanup any stale host-service metadata (no-op in local mode)
     _cleanup_gateway_service(name, profile_dir)
 
     # 2. Stop running gateway
@@ -598,51 +587,8 @@ def delete_profile(name: str, yes: bool = False) -> Path:
 
 
 def _cleanup_gateway_service(name: str, profile_dir: Path) -> None:
-    """Disable and remove systemd/launchd service for a profile."""
-    import platform as _platform
-
-    # Derive service name for this profile
-    # Temporarily set HERMES_HOME so _profile_suffix resolves correctly
-    old_home = os.environ.get("HERMES_HOME")
-    try:
-        os.environ["HERMES_HOME"] = str(profile_dir)
-        from hermes_cli.gateway import get_service_name, get_launchd_plist_path
-
-        if _platform.system() == "Linux":
-            svc_name = get_service_name()
-            svc_file = Path.home() / ".config" / "systemd" / "user" / f"{svc_name}.service"
-            if svc_file.exists():
-                subprocess.run(
-                    ["systemctl", "--user", "disable", svc_name],
-                    capture_output=True, check=False, timeout=10,
-                )
-                subprocess.run(
-                    ["systemctl", "--user", "stop", svc_name],
-                    capture_output=True, check=False, timeout=10,
-                )
-                svc_file.unlink(missing_ok=True)
-                subprocess.run(
-                    ["systemctl", "--user", "daemon-reload"],
-                    capture_output=True, check=False, timeout=10,
-                )
-                print(f"✓ Service {svc_name} removed")
-
-        elif _platform.system() == "Darwin":
-            plist_path = get_launchd_plist_path()
-            if plist_path.exists():
-                subprocess.run(
-                    ["launchctl", "unload", str(plist_path)],
-                    capture_output=True, check=False, timeout=10,
-                )
-                plist_path.unlink(missing_ok=True)
-                print(f"✓ Launchd service removed")
-    except Exception as e:
-        print(f"⚠ Service cleanup: {e}")
-    finally:
-        if old_home is not None:
-            os.environ["HERMES_HOME"] = old_home
-        elif "HERMES_HOME" in os.environ:
-            del os.environ["HERMES_HOME"]
+    """No-op in project-local mode: host service installation is disabled."""
+    return
 
 
 def _stop_gateway_process(profile_dir: Path) -> None:
@@ -701,7 +647,7 @@ def get_active_profile() -> str:
 def set_active_profile(name: str) -> None:
     """Set the sticky active profile.
 
-    Writes to ``~/.hermes/active_profile``. Use ``"default"`` to clear.
+    Writes to the project-local ``.hermes-home/active_profile`` marker.
     """
     validate_profile_name(name)
     if name != "default" and not profile_exists(name):
@@ -725,8 +671,9 @@ def set_active_profile(name: str) -> None:
 def get_active_profile_name() -> str:
     """Infer the current profile name from HERMES_HOME.
 
-    Returns ``"default"`` if HERMES_HOME is not set or points to ``~/.hermes``.
-    Returns the profile name if HERMES_HOME points into ``~/.hermes/profiles/<name>``.
+    Returns ``"default"`` if HERMES_HOME is not set or points to the project root.
+    Returns the profile name if HERMES_HOME points into the project-local
+    ``.hermes-home/profiles/<name>`` tree.
     Returns ``"custom"`` if HERMES_HOME is set to an unrecognized path.
     """
     from hermes_constants import get_hermes_home
@@ -794,9 +741,8 @@ def export_profile(name: str, output_path: str) -> Path:
     base = str(output).removesuffix(".tar.gz").removesuffix(".tgz")
 
     if name == "default":
-        # The default profile IS ~/.hermes itself — its parent is ~/ and its
-        # directory name is ".hermes", not "default".  We stage a clean copy
-        # under a temp dir so the archive contains ``default/...``.
+        # The default profile IS the project-local .hermes-home root. We stage
+        # a clean copy under a temp dir so the archive contains ``default/...``.
         with tempfile.TemporaryDirectory() as tmpdir:
             staged = Path(tmpdir) / "default"
             shutil.copytree(
@@ -907,11 +853,11 @@ def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
         )
 
     # Archives exported from the default profile have "default/" as top-level
-    # dir.  Importing as "default" would target ~/.hermes itself — disallow
-    # that and guide the user toward a named profile.
+    # dir. Importing as "default" would target the project-local root profile,
+    # so disallow that and guide the user toward a named profile.
     if inferred_name == "default":
         raise ValueError(
-            "Cannot import as 'default' — that is the built-in root profile (~/.hermes). "
+            "Cannot import as 'default' — that is the built-in project-local root profile. "
             "Specify a different name: hermes profile import <archive> --name <name>"
         )
 
@@ -938,7 +884,7 @@ def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
 # ---------------------------------------------------------------------------
 
 def rename_profile(old_name: str, new_name: str) -> Path:
-    """Rename a profile: directory, wrapper script, service, active_profile.
+    """Rename a profile: directory, wrapper script, and active_profile.
 
     Returns the new profile directory.
     """
@@ -997,7 +943,9 @@ def generate_bash_completion() -> str:
 # Add to ~/.bashrc: eval "$(hermes completion bash)"
 
 _hermes_profiles() {
-    local profiles_dir="$HOME/.hermes/profiles"
+    local repo_dir
+    repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    local profiles_dir="$repo_dir/.hermes-home/profiles"
     local profiles="default"
     if [ -d "$profiles_dir" ]; then
         profiles="$profiles $(ls "$profiles_dir" 2>/dev/null)"
@@ -1048,10 +996,12 @@ def generate_zsh_completion() -> str:
 # Add to ~/.zshrc: eval "$(hermes completion zsh)"
 
 _hermes() {
+    local repo_dir
     local -a profiles
+    repo_dir="$(cd "$(dirname "${(%):-%N}")/.." && pwd)"
     profiles=(default)
-    if [[ -d "$HOME/.hermes/profiles" ]]; then
-        profiles+=("${(@f)$(ls $HOME/.hermes/profiles 2>/dev/null)}")
+    if [[ -d "$repo_dir/.hermes-home/profiles" ]]; then
+        profiles+=("${(@f)$(ls $repo_dir/.hermes-home/profiles 2>/dev/null)}")
     fi
 
     _arguments \\

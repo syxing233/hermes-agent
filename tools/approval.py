@@ -15,7 +15,10 @@ import re
 import sys
 import threading
 import unicodedata
+from pathlib import Path
 from typing import Optional
+
+from hermes_constants import get_hermes_home
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +58,27 @@ def get_current_session_key(default: str = "default") -> str:
 
 # Sensitive write targets that should trigger approval even when referenced
 # via shell expansions like $HOME or $HERMES_HOME.
+def _build_hermes_env_pattern() -> str:
+    hermes_env = get_hermes_home() / ".env"
+    variants = {str(hermes_env)}
+    try:
+        relative = hermes_env.relative_to(Path.home())
+        variants.update({
+            f"~/{relative}",
+            f"$HOME/{relative}",
+            f"${{HOME}}/{relative}",
+        })
+    except ValueError:
+        pass
+    escaped = [re.escape(path.lower()) for path in variants]
+    escaped.extend([
+        r'(?:\$hermes_home|\$\{hermes_home\})/\.env',
+    ])
+    return r'(?:' + "|".join(escaped) + r')\b'
+
+
 _SSH_SENSITIVE_PATH = r'(?:~|\$home|\$\{home\})/\.ssh(?:/|$)'
-_HERMES_ENV_PATH = (
-    r'(?:~\/\.hermes/|'
-    r'(?:\$home|\$\{home\})/\.hermes/|'
-    r'(?:\$hermes_home|\$\{hermes_home\})/)'
-    r'\.env\b'
-)
+_HERMES_ENV_PATH = _build_hermes_env_pattern()
 _SENSITIVE_WRITE_TARGET = (
     r'(?:/etc/|/dev/sd|'
     rf'{_SSH_SENSITIVE_PATH}|'

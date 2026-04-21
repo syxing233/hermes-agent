@@ -7,53 +7,42 @@ without risk of circular imports.
 import os
 from pathlib import Path
 
+from hermes_bootstrap import get_project_hermes_home, get_repo_root
+
 
 def get_hermes_home() -> Path:
-    """Return the Hermes home directory (default: ~/.hermes).
+    """Return the Hermes home directory (default: <repo>/.hermes-home).
 
-    Reads HERMES_HOME env var, falls back to ~/.hermes.
+    Reads HERMES_HOME env var, falls back to the project-local home.
     This is the single source of truth — all other copies should import this.
     """
-    return Path(os.getenv("HERMES_HOME", Path.home() / ".hermes"))
+    return Path(os.getenv("HERMES_HOME", get_project_hermes_home()))
 
 
 def get_default_hermes_root() -> Path:
     """Return the root Hermes directory for profile-level operations.
 
-    In standard deployments this is ``~/.hermes``.
-
-    In Docker or custom deployments where ``HERMES_HOME`` points outside
-    ``~/.hermes`` (e.g. ``/opt/data``), returns ``HERMES_HOME`` directly
-    — that IS the root.
-
-    In profile mode where ``HERMES_HOME`` is ``<root>/profiles/<name>``,
-    returns ``<root>`` so that ``profile list`` can see all profiles.
-    Works both for standard (``~/.hermes/profiles/coder``) and Docker
-    (``/opt/data/profiles/coder``) layouts.
-
-    Import-safe — no dependencies beyond stdlib.
+    The default root is the project-local ``.hermes-home`` directory.
+    If HERMES_HOME points to a project-local profile directory, returns the
+    project-local root so profile operations can enumerate all local profiles.
+    If HERMES_HOME is set to some other custom path, returns that path to
+    preserve library-level flexibility in tests and low-level utilities.
     """
-    native_home = Path.home() / ".hermes"
+    project_home = get_project_hermes_home()
     env_home = os.environ.get("HERMES_HOME", "")
     if not env_home:
-        return native_home
+        return project_home
     env_path = Path(env_home)
-    try:
-        env_path.resolve().relative_to(native_home.resolve())
-        # HERMES_HOME is under ~/.hermes (normal or profile mode)
-        return native_home
-    except ValueError:
-        pass
-
-    # Docker / custom deployment.
-    # Check if this is a profile path: <root>/profiles/<name>
-    # If the immediate parent dir is named "profiles", the root is
-    # the grandparent — this covers Docker profiles correctly.
-    if env_path.parent.name == "profiles":
-        return env_path.parent.parent
-
-    # Not a profile path — HERMES_HOME itself is the root
+    if env_path.resolve() == project_home.resolve():
+        return project_home
+    if env_path.resolve().parent == (project_home / "profiles").resolve():
+        return project_home
     return env_path
+
+
+def get_repo_root_path() -> Path:
+    """Return the repository root for this Hermes checkout."""
+    return get_repo_root()
 
 
 def get_optional_skills_dir(default: Path | None = None) -> Path:
@@ -96,12 +85,12 @@ def display_hermes_home() -> str:
 
     Uses ``~/`` shorthand for readability::
 
-        default:  ``~/.hermes``
-        profile:  ``~/.hermes/profiles/coder``
+        default:  ``<repo>/.hermes-home``
+        profile:  ``<repo>/.hermes-home/profiles/coder``
         custom:   ``/opt/hermes-custom``
 
     Use this in **user-facing** print/log messages instead of hardcoding
-    ``~/.hermes``.  For code that needs a real ``Path``, use
+    the legacy global Hermes path. For code that needs a real ``Path``, use
     :func:`get_hermes_home` instead.
     """
     home = get_hermes_home()

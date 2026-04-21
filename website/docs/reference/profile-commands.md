@@ -138,7 +138,7 @@ Displays details about a profile including its home directory, configured model,
 ```bash
 $ hermes profile show work
 Profile: work
-Path:    ~/.hermes/profiles/work
+Path:    ${HERMES_HOME}/profiles/work
 Model:   anthropic/claude-sonnet-4 (anthropic)
 Gateway: stopped
 Skills:  12
@@ -191,7 +191,7 @@ Renames a profile. Updates the directory and shell alias.
 
 ```bash
 hermes profile rename mybot assistant
-# ~/.hermes/profiles/mybot → ~/.hermes/profiles/assistant
+# ${HERMES_HOME}/profiles/mybot → ${HERMES_HOME}/profiles/assistant
 # ~/.local/bin/mybot → ~/.local/bin/assistant
 ```
 

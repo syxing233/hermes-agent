@@ -9,7 +9,7 @@ description: "Filesystem safety nets for destructive operations using shadow git
 
 Hermes Agent automatically snapshots your project before **destructive operations** and lets you restore it with a single command. Checkpoints are **enabled by default** — there's zero cost when no file-mutating tools fire.
 
-This safety net is powered by an internal **Checkpoint Manager** that keeps a separate shadow git repository under `~/.hermes/checkpoints/` — your real project `.git` is never touched.
+This safety net is powered by an internal **Checkpoint Manager** that keeps a separate shadow git repository under `${HERMES_HOME}/checkpoints/` — your real project `.git` is never touched.
 
 ## What Triggers a Checkpoint
 
@@ -46,7 +46,7 @@ flowchart LR
   agent["AIAgent\n(run_agent.py)"]
   tools["File & terminal tools"]
   cpMgr["CheckpointManager"]
-  shadowRepo["Shadow git repo\n~/.hermes/checkpoints/<hash>"]
+  shadowRepo["Shadow git repo\n${HERMES_HOME}/checkpoints/<hash>"]
 
   user --> agent
   agent -->|"tool call"| tools
@@ -58,7 +58,7 @@ flowchart LR
 
 ## Configuration
 
-Checkpoints are enabled by default. Configure in `~/.hermes/config.yaml`:
+Checkpoints are enabled by default. Configure in `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 checkpoints:
@@ -180,7 +180,7 @@ To keep checkpointing safe and fast, Hermes applies several guardrails:
 All shadow repos live under:
 
 ```text
-~/.hermes/checkpoints/
+${HERMES_HOME}/checkpoints/
   ├── <hash1>/   # shadow git repo for one working directory
   ├── <hash2>/
   └── ...

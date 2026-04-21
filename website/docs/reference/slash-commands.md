@@ -11,7 +11,7 @@ Hermes has two slash-command surfaces, both driven by a central `COMMAND_REGISTR
 - **Interactive CLI slash commands** — dispatched by `cli.py`, with autocomplete from the registry
 - **Messaging slash commands** — dispatched by `gateway/run.py`, with help text and platform menus generated from the registry
 
-Installed skills are also exposed as dynamic slash commands on both surfaces. That includes bundled skills like `/plan`, which opens plan mode and saves markdown plans under `.hermes/plans/` relative to the active workspace/backend working directory.
+Installed skills are also exposed as dynamic slash commands on both surfaces. That includes bundled skills like `/plan`, which opens plan mode and saves markdown plans under the workspace-local plan directory relative to the active workspace/backend working directory.
 
 ## Interactive CLI slash commands
 
@@ -38,7 +38,7 @@ Type `/` in the CLI to open the autocomplete menu. Built-in commands are case-in
 | `/snapshot` (alias: `/snap`) | Create or restore state snapshots of Hermes config/state (usage: /snapshot [create\|restore \<id\>\|prune]) |
 | `/background <prompt>` (alias: `/bg`) | Run a prompt in a separate background session. The agent processes your prompt independently — your current session stays free for other work. Results appear as a panel when the task finishes. See [CLI Background Sessions](/docs/user-guide/cli#background-sessions). |
 | `/btw <question>` | Ephemeral side question using session context (no tools, not persisted). Useful for quick clarifications without affecting the conversation history. |
-| `/plan [request]` | Load the bundled `plan` skill to write a markdown plan instead of executing the work. Plans are saved under `.hermes/plans/` relative to the active workspace/backend working directory. |
+| `/plan [request]` | Load the bundled `plan` skill to write a markdown plan instead of executing the work. Plans are saved under the workspace-local plan directory relative to the active workspace/backend working directory. |
 | `/branch [name]` (alias: `/fork`) | Branch the current session (explore a different path) |
 
 ### Configuration
@@ -99,7 +99,7 @@ Type `/` in the CLI to open the autocomplete menu. Built-in commands are case-in
 
 ### Quick Commands
 
-User-defined quick commands map a short alias to a longer prompt. Configure them in `~/.hermes/config.yaml`:
+User-defined quick commands map a short alias to a longer prompt. Configure them in `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 quick_commands:
@@ -141,7 +141,7 @@ The messaging gateway supports the following built-in commands inside Telegram, 
 | `/rollback [number]` | List or restore filesystem checkpoints. |
 | `/snapshot [create\|restore <id>\|prune]` (alias: `/snap`) | Create or restore state snapshots of Hermes config/state. |
 | `/background <prompt>` | Run a prompt in a separate background session. Results are delivered back to the same chat when the task finishes. See [Messaging Background Sessions](/docs/user-guide/messaging/#background-sessions). |
-| `/plan [request]` | Load the bundled `plan` skill to write a markdown plan instead of executing the work. Plans are saved under `.hermes/plans/` relative to the active workspace/backend working directory. |
+| `/plan [request]` | Load the bundled `plan` skill to write a markdown plan instead of executing the work. Plans are saved under the workspace-local plan directory relative to the active workspace/backend working directory. |
 | `/reload-mcp` (alias: `/reload_mcp`) | Reload MCP servers from config. |
 | `/reload` | Reload `.env` variables into the running session. |
 | `/yolo` | Toggle YOLO mode — skip all dangerous command approval prompts. |

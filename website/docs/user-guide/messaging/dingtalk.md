@@ -97,7 +97,7 @@ Select **DingTalk** when prompted, then paste your Client ID, Client Secret, and
 
 ### Option B: Manual Configuration
 
-Add the following to your `~/.hermes/.env` file:
+Add the following to your `${HERMES_HOME}/.env` file:
 
 ```bash
 # Required
@@ -111,7 +111,7 @@ DINGTALK_ALLOWED_USERS=user-id-1
 # DINGTALK_ALLOWED_USERS=user-id-1,user-id-2
 ```
 
-Optional behavior settings in `~/.hermes/config.yaml`:
+Optional behavior settings in `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 group_sessions_per_user: true
@@ -155,7 +155,7 @@ pip install dingtalk-stream httpx
 
 **Cause**: The credentials aren't set in your environment or `.env` file.
 
-**Fix**: Verify `DINGTALK_CLIENT_ID` and `DINGTALK_CLIENT_SECRET` are set correctly in `~/.hermes/.env`. The Client ID is your AppKey, and the Client Secret is your AppSecret from the DingTalk Developer Console.
+**Fix**: Verify `DINGTALK_CLIENT_ID` and `DINGTALK_CLIENT_SECRET` are set correctly in `${HERMES_HOME}/.env`. The Client ID is your AppKey, and the Client Secret is your AppSecret from the DingTalk Developer Console.
 
 ### Stream disconnects / reconnection loops
 

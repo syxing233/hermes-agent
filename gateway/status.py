@@ -4,11 +4,9 @@ Gateway runtime status helpers.
 Provides PID-file based detection of whether the gateway daemon is running,
 used by send_message's check_fn to gate availability in the CLI.
 
-The PID file lives at ``{HERMES_HOME}/gateway.pid``.  HERMES_HOME defaults to
-``~/.hermes`` but can be overridden via the environment variable.  This means
-separate HERMES_HOME directories naturally get separate PID files — a property
-that will be useful when we add named profiles (multiple agents running
-concurrently under distinct configurations).
+The PID file lives at ``{HERMES_HOME}/gateway.pid``. Separate project-local
+HERMES_HOME directories naturally get separate PID files, so multiple isolated
+checkouts or profiles do not collide.
 """
 
 import hashlib

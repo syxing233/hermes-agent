@@ -114,3 +114,38 @@ async def test_prepare_inbound_message_text_transcribes_queued_voice_event():
     assert result is not None
     assert "queued voice transcript" in result
     assert "voice message" in result.lower()
+
+
+@pytest.mark.asyncio
+async def test_prepare_inbound_message_text_document_uses_path_without_forcing_clarify():
+    from gateway.run import GatewayRunner
+
+    runner = GatewayRunner.__new__(GatewayRunner)
+    runner.config = GatewayConfig(stt_enabled=True)
+    runner.adapters = {}
+    runner._model = "test-model"
+    runner._base_url = ""
+
+    source = SessionSource(
+        platform=Platform.TELEGRAM,
+        chat_id="123",
+        chat_type="dm",
+    )
+    event = MessageEvent(
+        text="请帮我做合规审查",
+        message_type=MessageType.DOCUMENT,
+        source=source,
+        media_urls=["/tmp/abc_123_85453.pdf"],
+        media_types=["application/pdf"],
+    )
+
+    result = await runner._prepare_inbound_message_text(
+        event=event,
+        source=source,
+        history=[],
+    )
+
+    assert result is not None
+    assert "/tmp/abc_123_85453.pdf" in result
+    assert "use this local path directly" in result.lower()
+    assert "ask the user what they'd like you to do with it" not in result.lower()

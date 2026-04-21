@@ -38,7 +38,7 @@ Key capabilities:
 To use Browserbase-managed cloud browsers, add:
 
 ```bash
-# Add to ~/.hermes/.env
+# Add to ${HERMES_HOME}/.env
 BROWSERBASE_API_KEY=***
 BROWSERBASE_PROJECT_ID=your-project-id-here
 ```
@@ -50,7 +50,7 @@ Get your credentials at [browserbase.com](https://browserbase.com).
 To use Browser Use as your cloud browser provider, add:
 
 ```bash
-# Add to ~/.hermes/.env
+# Add to ${HERMES_HOME}/.env
 BROWSER_USE_API_KEY=***
 ```
 
@@ -61,7 +61,7 @@ Get your API key at [browser-use.com](https://browser-use.com). Browser Use prov
 To use Firecrawl as your cloud browser provider, add:
 
 ```bash
-# Add to ~/.hermes/.env
+# Add to ${HERMES_HOME}/.env
 FIRECRAWL_API_KEY=fc-***
 ```
 
@@ -95,7 +95,7 @@ npm install && npm start   # downloads Camoufox (~300MB) on first run
 docker run -d --network host -e CAMOFOX_PORT=9377 jo-inc/camofox-browser
 ```
 
-Then set in `~/.hermes/.env`:
+Then set in `${HERMES_HOME}/.env`:
 
 ```bash
 CAMOFOX_URL=http://localhost:9377
@@ -110,7 +110,7 @@ When `CAMOFOX_URL` is set, all browser tools automatically route through Camofox
 By default, each Camofox session gets a random identity — cookies and logins don't survive across agent restarts. To enable persistent browser sessions:
 
 ```yaml
-# In ~/.hermes/config.yaml
+# In ${HERMES_HOME}/config.yaml
 browser:
   camofox:
     managed_persistence: true
@@ -265,7 +265,7 @@ The screenshot is saved persistently and the file path is returned alongside the
 What does the chart on this page show?
 ```
 
-Screenshots are stored in `~/.hermes/cache/screenshots/` and automatically cleaned up after 24 hours.
+Screenshots are stored in `${HERMES_HOME}/cache/screenshots/` and automatically cleaned up after 24 hours.
 
 ### `browser_console`
 
@@ -313,7 +313,7 @@ browser:
   record_sessions: true  # default: false
 ```
 
-When enabled, recording starts automatically on the first `browser_navigate` and saves to `~/.hermes/browser_recordings/` when the session closes. Works in both local and cloud (Browserbase) modes. Recordings older than 72 hours are automatically cleaned up.
+When enabled, recording starts automatically on the first `browser_navigate` and saves to `${HERMES_HOME}/browser_recordings/` when the session closes. Works in both local and cloud (Browserbase) modes. Recordings older than 72 hours are automatically cleaned up.
 
 ## Stealth Features
 

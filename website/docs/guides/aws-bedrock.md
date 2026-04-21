@@ -41,7 +41,7 @@ hermes chat
 
 ## Configuration
 
-After running `hermes model`, your `~/.hermes/config.yaml` will contain:
+After running `hermes model`, your `${HERMES_HOME}/config.yaml` will contain:
 
 ```yaml
 model:

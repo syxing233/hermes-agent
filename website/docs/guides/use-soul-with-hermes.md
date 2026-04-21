@@ -44,7 +44,7 @@ A good rule:
 Hermes now uses only the global SOUL file for the current instance:
 
 ```text
-~/.hermes/SOUL.md
+${HERMES_HOME}/SOUL.md
 ```
 
 If you run Hermes with a custom home directory, it becomes:
@@ -212,13 +212,13 @@ This is the most common mistake.
 ## How to edit it
 
 ```bash
-nano ~/.hermes/SOUL.md
+nano ${HERMES_HOME}/SOUL.md
 ```
 
 or
 
 ```bash
-vim ~/.hermes/SOUL.md
+vim ${HERMES_HOME}/SOUL.md
 ```
 
 Then restart Hermes or start a new session.
@@ -238,7 +238,7 @@ That iterative approach works better than trying to design the perfect personali
 ### I edited SOUL.md but Hermes still sounds the same
 
 Check:
-- you edited `~/.hermes/SOUL.md` or `$HERMES_HOME/SOUL.md`
+- you edited `${HERMES_HOME}/SOUL.md` or `$HERMES_HOME/SOUL.md`
 - not some repo-local `SOUL.md`
 - the file is not empty
 - your session was restarted after the edit

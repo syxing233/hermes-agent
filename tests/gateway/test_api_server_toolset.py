@@ -127,3 +127,32 @@ class TestApiServerAdapterToolset:
             call_kwargs = mock_agent_cls.call_args
             toolsets = call_kwargs.kwargs.get("enabled_toolsets")
             assert sorted(toolsets) == ["terminal", "web"]
+
+    @patch("gateway.platforms.api_server.AIOHTTP_AVAILABLE", True)
+    def test_create_agent_preloads_api_server_skills_into_ephemeral_prompt(self):
+        from gateway.platforms.api_server import APIServerAdapter
+        from gateway.config import PlatformConfig
+
+        adapter = APIServerAdapter(PlatformConfig())
+
+        with patch("gateway.run._resolve_runtime_agent_kwargs") as mock_kwargs, \
+             patch("gateway.run._resolve_gateway_model") as mock_model, \
+             patch("gateway.run._load_gateway_config") as mock_config, \
+             patch("agent.skill_commands.build_preloaded_skills_prompt") as mock_preload, \
+             patch("run_agent.AIAgent") as mock_agent_cls:
+
+            mock_kwargs.return_value = {"api_key": "test-key", "base_url": None,
+                                        "provider": None, "api_mode": None,
+                                        "command": None, "args": []}
+            mock_model.return_value = "test/model"
+            mock_config.return_value = {
+                "skills": {"preload": {"api_server": ["compliance-workflow-cn"]}},
+            }
+            mock_preload.return_value = ("PRELOADED SKILL PROMPT", ["compliance-workflow-cn"], [])
+            mock_agent_cls.return_value = MagicMock()
+
+            adapter._create_agent(ephemeral_system_prompt="USER INSTRUCTIONS")
+
+            mock_agent_cls.assert_called_once()
+            ephemeral = mock_agent_cls.call_args.kwargs.get("ephemeral_system_prompt")
+            assert ephemeral == "PRELOADED SKILL PROMPT\n\nUSER INSTRUCTIONS"

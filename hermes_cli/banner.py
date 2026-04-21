@@ -127,7 +127,7 @@ def check_for_updates() -> Optional[int]:
     """Check how many commits behind origin/main the local repo is.
 
     Does a ``git fetch`` at most once every 6 hours (cached to
-    ``~/.hermes/.update_check``).  Returns the number of commits behind,
+    ``HERMES_HOME/.update_check``). Returns the number of commits behind,
     or ``None`` if the check fails or isn't applicable.
     """
     hermes_home = get_hermes_home()

@@ -1,6 +1,6 @@
 """CLI entry point for the hermes-agent ACP adapter.
 
-Loads environment variables from ``~/.hermes/.env``, configures logging
+Loads environment variables from the project-local ``.hermes-home/.env``, configures logging
 to write to stderr (so stdout is reserved for ACP JSON-RPC transport),
 and starts the ACP agent server.
 
@@ -17,6 +17,14 @@ import asyncio
 import logging
 import sys
 from pathlib import Path
+
+project_root = str(Path(__file__).resolve().parent.parent)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+from hermes_bootstrap import bootstrap_local_hermes_home
+bootstrap_local_hermes_home()
+
 from hermes_constants import get_hermes_home
 
 
@@ -41,7 +49,7 @@ def _setup_logging() -> None:
 
 
 def _load_env() -> None:
-    """Load .env from HERMES_HOME (default ``~/.hermes``)."""
+    """Load .env from the project-local HERMES_HOME."""
     from hermes_cli.env_loader import load_hermes_dotenv
 
     hermes_home = get_hermes_home()
@@ -62,11 +70,6 @@ def main() -> None:
 
     logger = logging.getLogger(__name__)
     logger.info("Starting hermes-agent ACP adapter")
-
-    # Ensure the project root is on sys.path so ``from run_agent import AIAgent`` works
-    project_root = str(Path(__file__).resolve().parent.parent)
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
 
     import acp
     from .server import HermesACPAgent

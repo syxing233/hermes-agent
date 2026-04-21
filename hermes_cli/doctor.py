@@ -15,9 +15,9 @@ from hermes_constants import display_hermes_home
 
 PROJECT_ROOT = get_project_root()
 HERMES_HOME = get_hermes_home()
-_DHH = display_hermes_home()  # user-facing display path (e.g. ~/.hermes or ~/.hermes/profiles/coder)
+_DHH = display_hermes_home()  # user-facing display path for the active project-local HERMES_HOME
 
-# Load environment variables from ~/.hermes/.env so API key checks work
+# Load environment variables from HERMES_HOME/.env so API key checks work
 from dotenv import load_dotenv
 _env_path = get_env_path()
 if _env_path.exists():
@@ -84,7 +84,7 @@ def _termux_browser_setup_steps(node_installed: bool) -> list[str]:
 
 
 def _has_provider_env_config(content: str) -> bool:
-    """Return True when ~/.hermes/.env contains provider auth/base URL settings."""
+    """Return True when HERMES_HOME/.env contains provider auth/base URL settings."""
     return any(key in content for key in _PROVIDER_ENV_HINTS)
 
 
@@ -244,7 +244,7 @@ def run_doctor(args):
     print()
     print(color("◆ Configuration Files", Colors.CYAN, Colors.BOLD))
     
-    # Check ~/.hermes/.env (primary location for user config)
+    # Check the project-local .env (primary location for runtime secrets)
     env_path = HERMES_HOME / '.env'
     if env_path.exists():
         check_ok(f"{_DHH}/.env file exists")
@@ -257,42 +257,33 @@ def run_doctor(args):
             check_warn(f"No API key found in {_DHH}/.env")
             issues.append("Run 'hermes setup' to configure API keys")
     else:
-        # Also check project root as fallback
-        fallback_env = PROJECT_ROOT / '.env'
-        if fallback_env.exists():
-            check_ok(".env file exists (in project directory)")
+        check_fail(f"{_DHH}/.env file missing")
+        if should_fix:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            env_path.touch()
+            check_ok(f"Created empty {_DHH}/.env")
+            check_info("Run 'hermes setup' to configure API keys")
+            fixed_count += 1
         else:
-            check_fail(f"{_DHH}/.env file missing")
-            if should_fix:
-                env_path.parent.mkdir(parents=True, exist_ok=True)
-                env_path.touch()
-                check_ok(f"Created empty {_DHH}/.env")
-                check_info("Run 'hermes setup' to configure API keys")
-                fixed_count += 1
-            else:
-                check_info("Run 'hermes setup' to create one")
-                issues.append("Run 'hermes setup' to create .env")
-    
-    # Check ~/.hermes/config.yaml (primary) or project cli-config.yaml (fallback)
+            check_info("Run 'hermes setup' to create one")
+            issues.append("Run 'hermes setup' to create .env")
+
+    # Check the project-local config.yaml
     config_path = HERMES_HOME / 'config.yaml'
     if config_path.exists():
         check_ok(f"{_DHH}/config.yaml exists")
     else:
-        fallback_config = PROJECT_ROOT / 'cli-config.yaml'
-        if fallback_config.exists():
-            check_ok("cli-config.yaml exists (in project directory)")
+        example_config = PROJECT_ROOT / 'cli-config.yaml.example'
+        if should_fix and example_config.exists():
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(example_config), str(config_path))
+            check_ok(f"Created {_DHH}/config.yaml from cli-config.yaml.example")
+            fixed_count += 1
+        elif should_fix:
+            check_warn("config.yaml not found and no example to copy from")
+            manual_issues.append(f"Create {_DHH}/config.yaml manually")
         else:
-            example_config = PROJECT_ROOT / 'cli-config.yaml.example'
-            if should_fix and example_config.exists():
-                config_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(str(example_config), str(config_path))
-                check_ok(f"Created {_DHH}/config.yaml from cli-config.yaml.example")
-                fixed_count += 1
-            elif should_fix:
-                check_warn("config.yaml not found and no example to copy from")
-                manual_issues.append(f"Create {_DHH}/config.yaml manually")
-            else:
-                check_warn("config.yaml not found", "(using defaults)")
+            check_warn("config.yaml not found", "(using defaults)")
 
     # Check config version and stale keys
     config_path = HERMES_HOME / 'config.yaml'
@@ -537,9 +528,9 @@ def run_doctor(args):
             _cmd_link_dir = Path(_prefix) / "bin"
             _cmd_link_display = "$PREFIX/bin"
         else:
-            _cmd_link_dir = Path.home() / ".local" / "bin"
-            _cmd_link_display = "~/.local/bin"
-        _cmd_link = _cmd_link_dir / "hermes"
+            _cmd_link_dir = PROJECT_ROOT / "bin"
+            _cmd_link_display = str(_cmd_link_dir)
+        _cmd_link = PROJECT_ROOT / "run-hermes-local.sh"
 
         if _venv_bin is None:
             check_warn(
@@ -552,48 +543,22 @@ def run_doctor(args):
         else:
             check_ok(f"Venv entry point exists ({_venv_bin.relative_to(PROJECT_ROOT)})")
 
-            # Check the symlink at the command link location
-            if _cmd_link.is_symlink():
-                _target = _cmd_link.resolve()
-                _expected = _venv_bin.resolve()
-                if _target == _expected:
-                    check_ok(f"{_cmd_link_display}/hermes → correct target")
+            if _cmd_link.exists():
+                check_ok(f"{_cmd_link.name} exists ({_cmd_link})")
+                if _cmd_link_dir.exists():
+                    check_ok(f"Local profile wrapper dir exists ({_cmd_link_dir})")
                 else:
-                    check_warn(
-                        f"{_cmd_link_display}/hermes points to wrong target",
-                        f"(→ {_target}, expected → {_expected})"
-                    )
-                    if should_fix:
-                        _cmd_link.unlink()
-                        _cmd_link.symlink_to(_venv_bin)
-                        check_ok(f"Fixed symlink: {_cmd_link_display}/hermes → {_venv_bin}")
-                        fixed_count += 1
-                    else:
-                        issues.append(f"Broken symlink at {_cmd_link_display}/hermes — run 'hermes doctor --fix'")
-            elif _cmd_link.exists():
-                # It's a regular file, not a symlink — possibly a wrapper script
-                check_ok(f"{_cmd_link_display}/hermes exists (non-symlink)")
+                    check_warn(f"Local profile wrapper dir missing ({_cmd_link_dir})")
             else:
                 check_fail(
-                    f"{_cmd_link_display}/hermes not found",
-                    "(hermes command may not work outside the venv)"
+                    f"{_cmd_link} not found",
+                    "(project-local launcher is missing)"
                 )
                 if should_fix:
-                    _cmd_link_dir.mkdir(parents=True, exist_ok=True)
-                    _cmd_link.symlink_to(_venv_bin)
-                    check_ok(f"Created symlink: {_cmd_link_display}/hermes → {_venv_bin}")
-                    fixed_count += 1
-
-                    # Check if the link dir is on PATH
-                    _path_dirs = os.environ.get("PATH", "").split(os.pathsep)
-                    if str(_cmd_link_dir) not in _path_dirs:
-                        check_warn(
-                            f"{_cmd_link_display} is not on your PATH",
-                            "(add it to your shell config: export PATH=\"$HOME/.local/bin:$PATH\")"
-                        )
-                        manual_issues.append(f"Add {_cmd_link_display} to your PATH")
+                    check_warn("Launcher recreation is not automated")
+                    manual_issues.append(f"Restore {_cmd_link} from the repository")
                 else:
-                    issues.append(f"Missing {_cmd_link_display}/hermes symlink — run 'hermes doctor --fix'")
+                    issues.append(f"Missing project-local launcher {_cmd_link}")
 
     # =========================================================================
     # Check: External tools

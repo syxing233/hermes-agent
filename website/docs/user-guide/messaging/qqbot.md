@@ -35,7 +35,7 @@ Select **QQ Bot** from the platform list and follow the prompts.
 
 ### Manual configuration
 
-Set the required environment variables in `~/.hermes/.env`:
+Set the required environment variables in `${HERMES_HOME}/.env`:
 
 ```bash
 QQ_APP_ID=your-app-id
@@ -59,7 +59,7 @@ QQ_CLIENT_SECRET=your-app-secret
 
 ## Advanced Configuration
 
-For fine-grained control, add platform settings to `~/.hermes/config.yaml`:
+For fine-grained control, add platform settings to `${HERMES_HOME}/config.yaml`:
 
 ```yaml
 platforms:

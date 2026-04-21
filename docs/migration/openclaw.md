@@ -52,24 +52,24 @@ The agent will use the `openclaw-migration` skill to:
 ### `user-data` preset
 | Item | Source | Destination |
 |------|--------|-------------|
-| SOUL.md | `~/.openclaw/workspace/SOUL.md` | `~/.hermes/SOUL.md` |
-| Memory entries | `~/.openclaw/workspace/MEMORY.md` | `~/.hermes/memories/MEMORY.md` |
-| User profile | `~/.openclaw/workspace/USER.md` | `~/.hermes/memories/USER.md` |
-| Skills | `~/.openclaw/workspace/skills/` | `~/.hermes/skills/openclaw-imports/` |
-| Command allowlist | `~/.openclaw/workspace/exec_approval_patterns.yaml` | Merged into `~/.hermes/config.yaml` |
-| Messaging settings | `~/.openclaw/config.yaml` (TELEGRAM_ALLOWED_USERS, MESSAGING_CWD) | `~/.hermes/.env` |
-| TTS assets | `~/.openclaw/workspace/tts/` | `~/.hermes/tts/` |
+| SOUL.md | `~/.openclaw/workspace/SOUL.md` | `${HERMES_HOME}/SOUL.md` |
+| Memory entries | `~/.openclaw/workspace/MEMORY.md` | `${HERMES_HOME}/memories/MEMORY.md` |
+| User profile | `~/.openclaw/workspace/USER.md` | `${HERMES_HOME}/memories/USER.md` |
+| Skills | `~/.openclaw/workspace/skills/` | `${HERMES_HOME}/skills/openclaw-imports/` |
+| Command allowlist | `~/.openclaw/workspace/exec_approval_patterns.yaml` | Merged into `${HERMES_HOME}/config.yaml` |
+| Messaging settings | `~/.openclaw/config.yaml` (TELEGRAM_ALLOWED_USERS, MESSAGING_CWD) | `${HERMES_HOME}/.env` |
+| TTS assets | `~/.openclaw/workspace/tts/` | `${HERMES_HOME}/tts/` |
 
 Workspace files are also checked at `workspace.default/` and `workspace-main/` as fallback paths (OpenClaw renamed `workspace/` to `workspace-main/` in recent versions).
 
 ### `full` preset (adds to `user-data`)
 | Item | Source | Destination |
 |------|--------|-------------|
-| Telegram bot token | `openclaw.json` channels config | `~/.hermes/.env` |
-| OpenRouter API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `~/.hermes/.env` |
-| OpenAI API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `~/.hermes/.env` |
-| Anthropic API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `~/.hermes/.env` |
-| ElevenLabs API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `~/.hermes/.env` |
+| Telegram bot token | `openclaw.json` channels config | `${HERMES_HOME}/.env` |
+| OpenRouter API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `${HERMES_HOME}/.env` |
+| OpenAI API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `${HERMES_HOME}/.env` |
+| Anthropic API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `${HERMES_HOME}/.env` |
+| ElevenLabs API key | `.env`, `openclaw.json`, or `openclaw.json["env"]` | `${HERMES_HOME}/.env` |
 
 API keys are searched across four sources: inline config values, `~/.openclaw/.env`, the `openclaw.json` `"env"` sub-object, and per-agent auth profiles.
 
@@ -90,10 +90,10 @@ The migration handles both old and current OpenClaw config layouts:
 
 By default, the migration **will not overwrite** existing Hermes data:
 
-- **SOUL.md** — skipped if one already exists in `~/.hermes/`
+- **SOUL.md** — skipped if one already exists in `${HERMES_HOME}/`
 - **Memory entries** — skipped if memories already exist (to avoid duplicates)
 - **Skills** — skipped if a skill with the same name already exists
-- **API keys** — skipped if the key is already set in `~/.hermes/.env`
+- **API keys** — skipped if the key is already set in `${HERMES_HOME}/.env`
 
 To overwrite conflicts, use `--overwrite`. The migration creates backups before overwriting.
 
@@ -107,7 +107,7 @@ Every migration produces a report showing:
 - **Skipped items** — items not found in the source
 - **Errors** — items that failed to import
 
-For executed migrations, the full report is saved to `~/.hermes/migration/openclaw/<timestamp>/`.
+For executed migrations, the full report is saved to `${HERMES_HOME}/migration/openclaw/<timestamp>/`.
 
 ## Post-Migration Notes
 

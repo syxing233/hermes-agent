@@ -11,6 +11,8 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from hermes_bootstrap import get_profiles_root
+
 
 def _walk(parser: argparse.ArgumentParser) -> dict[str, Any]:
     """Recursively extract subcommands and flags from a parser.
@@ -55,6 +57,7 @@ def _clean(text: str, maxlen: int = 60) -> str:
 def generate_bash(parser: argparse.ArgumentParser) -> str:
     tree = _walk(parser)
     top_cmds = " ".join(sorted(tree["subcommands"]))
+    profiles_dir = str(get_profiles_root())
 
     cases: list[str] = []
     for cmd in sorted(tree["subcommands"]):
@@ -102,7 +105,7 @@ def generate_bash(parser: argparse.ArgumentParser) -> str:
 #   eval "$(hermes completion bash)"
 
 _hermes_profiles() {{
-    local profiles_dir="$HOME/.hermes/profiles"
+    local profiles_dir="{profiles_dir}"
     local profiles="default"
     if [ -d "$profiles_dir" ]; then
         profiles="$profiles $(ls "$profiles_dir" 2>/dev/null)"
@@ -143,6 +146,7 @@ complete -F _hermes_completion hermes
 
 def generate_zsh(parser: argparse.ArgumentParser) -> str:
     tree = _walk(parser)
+    profiles_dir = str(get_profiles_root())
 
     top_cmds_lines: list[str] = []
     for cmd in sorted(tree["subcommands"]):
@@ -205,8 +209,8 @@ def generate_zsh(parser: argparse.ArgumentParser) -> str:
 _hermes_profiles() {{
     local -a profiles
     profiles=(default)
-    if [[ -d "$HOME/.hermes/profiles" ]]; then
-        profiles+=("${{(@f)$(ls $HOME/.hermes/profiles 2>/dev/null)}}")
+    if [[ -d "{profiles_dir}" ]]; then
+        profiles+=("${{(@f)$(ls "{profiles_dir}" 2>/dev/null)}}")
     fi
     _describe 'profile' profiles
 }}
@@ -250,6 +254,7 @@ def generate_fish(parser: argparse.ArgumentParser) -> str:
     tree = _walk(parser)
     top_cmds = sorted(tree["subcommands"])
     top_cmds_str = " ".join(top_cmds)
+    profiles_dir = str(get_profiles_root())
 
     lines: list[str] = [
         "# Hermes Agent fish completion",
@@ -259,8 +264,8 @@ def generate_fish(parser: argparse.ArgumentParser) -> str:
         "# Helper: list available profiles",
         "function __hermes_profiles",
         "    echo default",
-        "    if test -d $HOME/.hermes/profiles",
-        "        ls $HOME/.hermes/profiles 2>/dev/null",
+        f"    if test -d \"{profiles_dir}\"",
+        f"        ls \"{profiles_dir}\" 2>/dev/null",
         "    end",
         "end",
         "",

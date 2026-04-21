@@ -38,7 +38,7 @@ Creates a fresh profile with bundled skills seeded. Run `mybot setup` to configu
 hermes profile create work --clone
 ```
 
-Copies your current profile's `config.yaml`, `.env`, and `SOUL.md` into the new profile. Same API keys and model, but fresh sessions and memory. Edit `~/.hermes/profiles/work/.env` for different API keys, or `~/.hermes/profiles/work/SOUL.md` for a different personality.
+Copies your current profile's `config.yaml`, `.env`, and `SOUL.md` into the new profile. Same API keys and model, but fresh sessions and memory. Edit `${HERMES_HOME}/profiles/work/.env` for different API keys, or `${HERMES_HOME}/profiles/work/SOUL.md` for a different personality.
 
 ### Clone everything (`--clone-all`)
 
@@ -119,10 +119,10 @@ Each profile has its own `.env` file. Configure a different Telegram/Discord/Sla
 
 ```bash
 # Edit coder's tokens
-nano ~/.hermes/profiles/coder/.env
+nano ${HERMES_HOME}/profiles/coder/.env
 
 # Edit assistant's tokens
-nano ~/.hermes/profiles/assistant/.env
+nano ${HERMES_HOME}/profiles/assistant/.env
 ```
 
 ### Safety: token locks
@@ -148,7 +148,7 @@ Each profile has its own:
 
 ```bash
 coder config set model.model anthropic/claude-sonnet-4
-echo "You are a focused coding assistant." > ~/.hermes/profiles/coder/SOUL.md
+echo "You are a focused coding assistant." > ${HERMES_HOME}/profiles/coder/SOUL.md
 ```
 
 ## Updating
@@ -184,7 +184,7 @@ This stops the gateway, removes the systemd/launchd service, removes the command
 Use `--yes` to skip confirmation: `hermes profile delete coder --yes`
 
 :::note
-You cannot delete the default profile (`~/.hermes`). To remove everything, use `hermes uninstall`.
+You cannot delete the default profile (`${HERMES_HOME}`). To remove everything, use `hermes uninstall`.
 :::
 
 ## Tab completion
@@ -201,6 +201,6 @@ Add the line to your `~/.bashrc` or `~/.zshrc` for persistent completion. Comple
 
 ## How it works
 
-Profiles use the `HERMES_HOME` environment variable. When you run `coder chat`, the wrapper script sets `HERMES_HOME=~/.hermes/profiles/coder` before launching hermes. Since 119+ files in the codebase resolve paths via `get_hermes_home()`, everything automatically scopes to the profile's directory — config, sessions, memory, skills, state database, gateway PID, logs, and cron jobs.
+Profiles use the `HERMES_HOME` environment variable. When you run `coder chat`, the wrapper script sets `HERMES_HOME=${HERMES_HOME}/profiles/coder` before launching hermes. Since 119+ files in the codebase resolve paths via `get_hermes_home()`, everything automatically scopes to the profile's directory — config, sessions, memory, skills, state database, gateway PID, logs, and cron jobs.
 
-The default profile is simply `~/.hermes` itself. No migration needed — existing installs work identically.
+The default profile is simply `${HERMES_HOME}` itself. No migration needed — existing installs work identically.

@@ -7,60 +7,62 @@ from unittest.mock import patch
 import pytest
 
 import hermes_constants
-from hermes_constants import get_default_hermes_root, is_container
+from hermes_bootstrap import ensure_allowed_hermes_home, get_project_hermes_home
+from hermes_constants import get_default_hermes_root, get_hermes_home, is_container
 
 
 class TestGetDefaultHermesRoot:
-    """Tests for get_default_hermes_root() — Docker/custom deployment awareness."""
+    """Tests for project-local Hermes root helpers."""
 
-    def test_no_hermes_home_returns_native(self, tmp_path, monkeypatch):
-        """When HERMES_HOME is not set, returns ~/.hermes."""
+    def test_no_hermes_home_returns_project_local_home(self, tmp_path, monkeypatch):
+        """When HERMES_HOME is not set, returns <repo>/.hermes-home."""
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
         monkeypatch.delenv("HERMES_HOME", raising=False)
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        assert get_default_hermes_root() == tmp_path / ".hermes"
+        assert get_default_hermes_root() == repo_root / ".hermes-home"
+        assert get_hermes_home() == repo_root / ".hermes-home"
 
-    def test_hermes_home_is_native(self, tmp_path, monkeypatch):
-        """When HERMES_HOME = ~/.hermes, returns ~/.hermes."""
-        native = tmp_path / ".hermes"
-        native.mkdir()
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    def test_hermes_home_is_project_local_root(self, tmp_path, monkeypatch):
+        repo_root = tmp_path / "repo"
+        native = repo_root / ".hermes-home"
+        native.mkdir(parents=True)
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
         monkeypatch.setenv("HERMES_HOME", str(native))
         assert get_default_hermes_root() == native
 
-    def test_hermes_home_is_profile(self, tmp_path, monkeypatch):
-        """When HERMES_HOME is a profile under ~/.hermes, returns ~/.hermes."""
-        native = tmp_path / ".hermes"
+    def test_hermes_home_is_project_local_profile(self, tmp_path, monkeypatch):
+        repo_root = tmp_path / "repo"
+        native = repo_root / ".hermes-home"
         profile = native / "profiles" / "coder"
         profile.mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
         monkeypatch.setenv("HERMES_HOME", str(profile))
         assert get_default_hermes_root() == native
 
-    def test_hermes_home_is_docker(self, tmp_path, monkeypatch):
-        """When HERMES_HOME points outside ~/.hermes (Docker), returns HERMES_HOME."""
+    def test_custom_external_hermes_home_still_round_trips_for_low_level_calls(self, tmp_path, monkeypatch):
         docker_home = tmp_path / "opt" / "data"
         docker_home.mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
         monkeypatch.setenv("HERMES_HOME", str(docker_home))
         assert get_default_hermes_root() == docker_home
 
-    def test_hermes_home_is_custom_path(self, tmp_path, monkeypatch):
-        """Any HERMES_HOME outside ~/.hermes is treated as the root."""
-        custom = tmp_path / "my-hermes-data"
-        custom.mkdir()
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        monkeypatch.setenv("HERMES_HOME", str(custom))
-        assert get_default_hermes_root() == custom
+    def test_project_local_validation_rejects_external_home(self, tmp_path, monkeypatch):
+        repo_root = tmp_path / "repo"
+        repo_root.mkdir()
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
+        with pytest.raises(RuntimeError):
+            ensure_allowed_hermes_home(tmp_path / "outside")
 
-    def test_docker_profile_active(self, tmp_path, monkeypatch):
-        """When a Docker profile is active (HERMES_HOME=<root>/profiles/<name>),
-        returns the Docker root, not the profile dir."""
-        docker_root = tmp_path / "opt" / "data"
-        profile = docker_root / "profiles" / "coder"
+    def test_project_local_validation_accepts_project_profile(self, tmp_path, monkeypatch):
+        repo_root = tmp_path / "repo"
+        profile = repo_root / ".hermes-home" / "profiles" / "coder"
         profile.mkdir(parents=True)
-        monkeypatch.setattr(Path, "home", lambda: tmp_path)
-        monkeypatch.setenv("HERMES_HOME", str(profile))
-        assert get_default_hermes_root() == docker_root
+        monkeypatch.setenv("HERMES_PROJECT_ROOT", str(repo_root))
+        assert ensure_allowed_hermes_home(profile) == profile.resolve()
+        assert get_project_hermes_home() == (repo_root / ".hermes-home")
 
 
 class TestIsContainer:

@@ -74,17 +74,19 @@ _ensure_ssl_certs()
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from hermes_bootstrap import bootstrap_local_hermes_home
+bootstrap_local_hermes_home()
+
 # Resolve Hermes home directory (respects HERMES_HOME override)
 from hermes_constants import get_hermes_home
 from utils import atomic_yaml_write, is_truthy_value
 _hermes_home = get_hermes_home()
 
-# Load environment variables from ~/.hermes/.env first.
-# User-managed env files should override stale shell exports on restart.
+# Load only the project-local Hermes .env.
 from dotenv import load_dotenv  # backward-compat for tests that monkeypatch this symbol
 from hermes_cli.env_loader import load_hermes_dotenv
 _env_path = _hermes_home / '.env'
-load_hermes_dotenv(hermes_home=_hermes_home, project_env=Path(__file__).resolve().parents[1] / '.env')
+load_hermes_dotenv(hermes_home=_hermes_home)
 
 # Bridge config.yaml values into the environment so os.getenv() picks them up.
 # config.yaml is authoritative for terminal settings — overrides .env.
@@ -427,7 +429,7 @@ def _platform_config_key(platform: "Platform") -> str:
 
 
 def _load_gateway_config() -> dict:
-    """Load and parse ~/.hermes/config.yaml, returning {} on any error."""
+    """Load and parse HERMES_HOME/config.yaml, returning {} on any error."""
     try:
         config_path = _hermes_home / 'config.yaml'
         if config_path.exists():
@@ -1096,8 +1098,8 @@ class GatewayRunner:
         """Load ephemeral prefill messages from config or env var.
         
         Checks HERMES_PREFILL_MESSAGES_FILE env var first, then falls back to
-        the prefill_messages_file key in ~/.hermes/config.yaml.
-        Relative paths are resolved from ~/.hermes/.
+        the prefill_messages_file key in HERMES_HOME/config.yaml.
+        Relative paths are resolved from HERMES_HOME/.
         """
         import json as _json
         file_path = os.getenv("HERMES_PREFILL_MESSAGES_FILE", "")
@@ -1135,7 +1137,7 @@ class GatewayRunner:
         """Load ephemeral system prompt from config or env var.
         
         Checks HERMES_EPHEMERAL_SYSTEM_PROMPT env var first, then falls back to
-        agent.system_prompt in ~/.hermes/config.yaml.
+        agent.system_prompt in HERMES_HOME/config.yaml.
         """
         prompt = os.getenv("HERMES_EPHEMERAL_SYSTEM_PROMPT", "")
         if prompt:
@@ -1776,9 +1778,10 @@ class GatewayRunner:
                        "QQ_ALLOW_ALL_USERS")
         )
         if not _any_allowlist and not _allow_all:
+            from hermes_constants import display_hermes_home
             logger.warning(
                 "No user allowlists configured. All unauthorized users will be denied. "
-                "Set GATEWAY_ALLOW_ALL_USERS=true in ~/.hermes/.env to allow open access, "
+                f"Set GATEWAY_ALLOW_ALL_USERS=true in {display_hermes_home()}/.env to allow open access, "
                 "or configure platform allowlists (e.g., TELEGRAM_ALLOWED_USERS=your_id)."
             )
         
@@ -3352,7 +3355,8 @@ class GatewayRunner:
                     context_note = (
                         f"[The user sent a document: '{display_name}'. "
                         f"The file is saved at: {path}. "
-                        f"Ask the user what they'd like you to do with it.]"
+                        "If the user's request is already clear, use this local path directly with the relevant tool. "
+                        "Do not claim the path is incompatible or ask the user to convert/paste the document unless a tool call actually fails because the file is missing or unreadable.]"
                     )
                 message_text = f"{context_note}\n\n{message_text}"
 

@@ -31,7 +31,7 @@ hermes gateway setup
 
 Select **BlueBubbles (iMessage)** and enter your server URL and password.
 
-Or set environment variables directly in `~/.hermes/.env`:
+Or set environment variables directly in `${HERMES_HOME}/.env`:
 
 ```bash
 BLUEBUBBLES_SERVER_URL=http://192.168.1.10:1234
@@ -49,12 +49,12 @@ hermes pairing approve bluebubbles <CODE>
 ```
 Use `hermes pairing list` to see pending codes and approved users.
 
-**Pre-authorize specific users** (in `~/.hermes/.env`):
+**Pre-authorize specific users** (in `${HERMES_HOME}/.env`):
 ```bash
 BLUEBUBBLES_ALLOWED_USERS=user@icloud.com,+15551234567
 ```
 
-**Open access** (in `~/.hermes/.env`):
+**Open access** (in `${HERMES_HOME}/.env`):
 ```bash
 BLUEBUBBLES_ALLOW_ALL_USERS=true
 ```

@@ -18,13 +18,16 @@ if str(PROJECT_ROOT) not in sys.path:
 
 @pytest.fixture(autouse=True)
 def _isolate_hermes_home(tmp_path, monkeypatch):
-    """Redirect HERMES_HOME to a temp dir so tests never write to ~/.hermes/."""
-    fake_home = tmp_path / "hermes_test"
+    """Redirect HERMES_HOME to a temp project-local dir for tests."""
+    fake_project_root = tmp_path / "project_root"
+    fake_project_root.mkdir()
+    fake_home = fake_project_root / ".hermes-home"
     fake_home.mkdir()
     (fake_home / "sessions").mkdir()
     (fake_home / "cron").mkdir()
     (fake_home / "memories").mkdir()
     (fake_home / "skills").mkdir()
+    monkeypatch.setenv("HERMES_PROJECT_ROOT", str(fake_project_root))
     monkeypatch.setenv("HERMES_HOME", str(fake_home))
     # Reset plugin singleton so tests don't leak plugins from ~/.hermes/plugins/
     try:

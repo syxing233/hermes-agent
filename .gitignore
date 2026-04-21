@@ -3,6 +3,7 @@
 *.pyc*
 __pycache__/
 .venv/
+.hermes-home/
 .vscode/
 .env
 .env.local

@@ -1,8 +1,8 @@
 """
 Cron job storage and management.
 
-Jobs are stored in ~/.hermes/cron/jobs.json
-Output is saved to ~/.hermes/cron/output/{job_id}/{timestamp}.md
+Jobs are stored in HERMES_HOME/cron/jobs.json
+Output is saved to HERMES_HOME/cron/output/{job_id}/{timestamp}.md
 """
 
 import copy

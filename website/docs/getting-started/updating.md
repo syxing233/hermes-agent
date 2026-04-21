@@ -161,14 +161,14 @@ See [Nix Setup](./nix-setup.md) for more details.
 hermes uninstall
 ```
 
-The uninstaller gives you the option to keep your configuration files (`~/.hermes/`) for a future reinstall.
+The uninstaller gives you the option to keep your configuration files (`${HERMES_HOME}/`) for a future reinstall.
 
 ### Manual Uninstall
 
 ```bash
 rm -f ~/.local/bin/hermes
 rm -rf /path/to/hermes-agent
-rm -rf ~/.hermes            # Optional — keep if you plan to reinstall
+rm -rf ${HERMES_HOME}            # Optional — keep if you plan to reinstall
 ```
 
 :::info
