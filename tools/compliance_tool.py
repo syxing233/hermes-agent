@@ -435,15 +435,6 @@ registry.register(
 )
 
 registry.register(
-    name="compliance_assistant",
-    toolset="compliance",
-    schema=COMPLIANCE_ASSISTANT_SCHEMA,
-    handler=_handle_compliance_assistant,
-    check_fn=check_compliance_agent_requirements,
-    requires_env=[],
-)
-
-registry.register(
     name="compliance_get_report",
     toolset="compliance",
     schema=COMPLIANCE_GET_REPORT_SCHEMA,

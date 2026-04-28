@@ -57,7 +57,7 @@ class TestResolveToolset:
     def test_compliance_specialist_toolset(self):
         tools = resolve_toolset("compliance-specialist")
         assert "compliance_review" in tools
-        assert "compliance_assistant" in tools
+        assert "compliance_assistant" not in tools
         assert "read_file" in tools
         assert "skills_list" in tools
         assert "clarify" in tools

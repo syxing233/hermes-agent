@@ -1,28 +1,44 @@
 ---
 name: marketing-material-compliance-check
-description: 对营销物料调用 Hermes 内嵌合规引擎，固定 material_type=营销物料，用于输出结构化合规检测结果。
+description: 营销物料专属合规检测 Skill。固定 material_type=营销物料，路由到 general-compliance-workflow，用于检测宣传文案、销售话术和营销材料风险。
+version: 1.0.0
+author: Hermes Agent
+license: MIT
+metadata:
+  hermes:
+    tags: [compliance, marketing, review]
+    category: compliance
+    requires_toolsets: [compliance-specialist]
 ---
 
-# Marketing Material Compliance Check
+# 营销物料合规检测
 
-## When To Use
+## 使用场景
 
-Use this skill when the source is 营销物料 and the user wants a structured compliance review.
+当用户要审查宣传文案、销售话术、活动介绍、广告素材正文、营销页面文本等营销物料时使用本 Skill。
 
-## How To Route
+本 Skill 只负责营销物料的专属适配，不负责合规 Agent 的总人格、最终话术风格或其它物料路由。
 
-Call `compliance_review` with:
+## 工具调用
+
+调用 `compliance_review`，并固定传入：
 
 - `material_type="营销物料"`
-- `file_paths=[...]` for files
-- `text` for pasted content or审查重点
+- 用户给文件时传 `file_paths=[...]`
+- 用户粘贴文案或补充审查要求时传 `text`
 
-## Expected Output
+营销物料检测在运行侧会路由到：
 
-The embedded engine returns:
+- 工作流路由：`general-compliance-workflow`
+- 工作流类型：`general`
+- 认证配置：`COMPLIANCE_GENERAL_API_KEY`
+- 外部物料类型：`营销物料`
+- 默认 query：`请执行营销物料合规审查`
 
-- `review_id`
-- `summary`
-- `top_items`
-- `status_trace_summary`
-- `artifact_path`
+## 关注重点
+
+重点关注绝对化用语、收益承诺、夸大宣传、误导性表述、竞品比较、资质背书、风险提示缺失、适当性提示缺失和监管禁止性表述。
+
+## 输出要求
+
+检测完成后按总控 Skill 的中文结果格式解释，区分“文案表述风险”和“产品条款风险”。

@@ -1,28 +1,46 @@
 ---
 name: product-handbook-compliance-check
-description: 对产品说明书材料调用 Hermes 内嵌合规引擎，固定 material_type=产品说明书，用于输出结构化合规检测结果。
+description: 产品说明书专属合规检测 Skill。固定 material_type=产品说明书，路由到 general-compliance-workflow，但使用产品说明书专属 COMPLIANCE_HANDBOOK_API_KEY。
+version: 1.0.0
+author: Hermes Agent
+license: MIT
+metadata:
+  hermes:
+    tags: [compliance, product-handbook, review]
+    category: compliance
+    requires_toolsets: [compliance-specialist]
 ---
 
-# Product Handbook Compliance Check
+# 产品说明书合规检测
 
-## When To Use
+## 使用场景
 
-Use this skill when the material is a 产品说明书 and the user wants structured review findings.
+当用户要审查产品说明书、产品手册、服务说明、权益说明、使用说明等说明书类材料时使用本 Skill。
 
-## How To Route
+本 Skill 只负责产品说明书材料的专属适配，不负责合规 Agent 的总人格、最终话术风格或其它物料路由。
 
-Call `compliance_review` with:
+## 工具调用
+
+调用 `compliance_review`，并固定传入：
 
 - `material_type="产品说明书"`
-- `file_paths=[...]` for files
-- `text` for inline content or review instructions
+- 用户给文件时传 `file_paths=[...]`
+- 用户粘贴说明书内容或补充审查要求时传 `text`
 
-## Expected Output
+产品说明书检测在运行侧会路由到：
 
-Expect a compact Hermes-friendly result plus artifact storage:
+- 工作流路由：`general-compliance-workflow`
+- 工作流类型：`general`
+- 认证配置：`COMPLIANCE_HANDBOOK_API_KEY`
+- 外部物料类型：`产品说明书`
+- 默认 query：`请执行产品说明书合规审查`
 
-- `review_id`
-- `summary`
-- `top_items`
-- `status_trace_summary`
-- `artifact_path`
+注意：产品说明书虽然使用 general 工作流路由，但认证 key 不是 `COMPLIANCE_GENERAL_API_KEY`。
+
+## 关注重点
+
+重点关注产品范围、适用条件、限制条件、责任边界、费用说明、用户义务、服务承诺、风险提示、前后表述一致性和重要信息完整性。
+
+## 输出要求
+
+检测完成后按总控 Skill 的中文结果格式解释，不要把产品说明书误判为营销物料或条款书。

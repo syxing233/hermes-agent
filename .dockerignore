@@ -11,6 +11,18 @@ node_modules
 .github
 
 # Environment files
-.env
+.env*
+!.env.example
+
+# Local runtime data and editor state
+.DS_Store
+.claude
+.data
+.hermes-home
+.idea
+.pytest_cache
+.ruff_cache
+*.sqlite3
+*.log
 
 *.md

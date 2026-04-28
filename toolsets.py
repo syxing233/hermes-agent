@@ -203,7 +203,7 @@ TOOLSETS = {
 
     "compliance": {
         "description": "Compliance review tools backed by Hermes's embedded compliance engine",
-        "tools": ["compliance_health", "compliance_review", "compliance_assistant", "compliance_get_report"],
+        "tools": ["compliance_health", "compliance_review", "compliance_get_report"],
         "includes": []
     },
 

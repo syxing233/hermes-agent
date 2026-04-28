@@ -1,6 +1,6 @@
 ---
 name: compliance-workflow-cn
-description: 中文合规工作流。普通问答直接回答；明确检测请求优先调用 compliance_review；材料不全时先 clarify；拿到结构化结果后输出中文解读。
+description: 中文合规检测总控工作流。用于判断普通问答与检测请求，路由合同、条款书、营销物料、海报、产品说明书检测，并规范 compliance_review 调用和中文结果解读。
 version: 1.0.0
 author: Hermes Agent
 license: MIT
@@ -11,54 +11,51 @@ metadata:
     requires_toolsets: [compliance-specialist]
 ---
 
-# Compliance Workflow (CN)
+# 中文合规检测总控工作流
 
-## When To Use
+## 职责边界
 
-Use this skill when the session is primarily about compliance review, material checking, or interpreting structured review results in Chinese.
+本 Skill 只负责合规检测会话的总控：判断意图、选择物料类型、调用合规工具、解释结构化结果。
 
-## Routing Rules
+不要在这里重复维护每类物料的 API 细节。合同、条款书、营销物料、海报、产品说明书的专属规则由各自物料 Skill 负责。
 
-1. **普通问答**
-   直接回答用户问题。
-   不要为了普通聊天默认调用 `compliance_assistant`。
+## 意图判断
 
-2. **明确的检测请求**
-   当用户明确要求”检查/审查/检测/评估”文件或文本合规时，或用户上传/提供了任何文件，必须直接调用 `compliance_review`，不要询问用户处理方式（如提取文本、分段处理等）。
-   - 用户明确给出物料类型时，传 `material_type`
-   - 用户没有明确给出物料类型时，不要猜，交给内嵌 compliance engine 自动分类
-   - 用户同时给文件和补充文字时，把补充文字作为 `text`
-   - 用户已经上传附件或给出可访问的本地文件路径时，直接把路径传给 `compliance_review`
-   - 不要在已有可访问路径时要求用户把 PDF 转成 txt、手动粘贴全文，或笼统声称”文件路径/PDF 兼容性有问题”
-   - 不要在用户已提供文件时弹出交互选择（提取文本/分段处理/其他），直接调用 `compliance_review`，引擎内部会自动处理文档解析和分类
+- 普通合规咨询、法规解释、系统使用问题：直接用中文回答，不要默认调用检测工具。
+- 用户明确要求“检测、审查、审核、评估、过审、看风险”文件或文本：调用 `compliance_review`。
+- 用户上传附件、给出本地文件路径、粘贴大段待审文本：视为检测请求，调用 `compliance_review`。
+- 材料、路径或待审内容缺失时，先补齐最少必要信息。
 
-3. **信息不全**
-   如果缺少必要材料、路径不明确、或用户只说“帮我看看”但没有给可检测内容，先用 `clarify` 补齐最少必要信息。
+## 物料路由
 
-4. **兼容旧流程**
-   `compliance_assistant` 只用于以下场景：
-   - 用户明确要求走兼容入口
-   - 迁移期兼容旧接口行为
-   它不能创建独立会话、记忆或总结层。
+- 用户已明确物料类型时，把 `material_type` 传给 `compliance_review`。
+- 用户没有明确物料类型时，不要主观猜测，交给内嵌合规引擎自动分类。
+- 支持的核心物料类型是：`合同`、`条款书`、`营销物料`、`海报`、`产品说明书`。
 
-5. **结果呈现**
-   调完 `compliance_review` 后，不要把原始 JSON 原封不动甩给用户。用中文总结：
-   - 总体结论
-   - 识别出的物料类型
-   - 风险概览
-   - 关键命中项
-   - 依据/原文摘录
-   - 修改建议
-   - 若后端报错或材料无效，给出下一步可执行建议
+## 工具调用规则
 
-## Output Style
+- 主入口是 `compliance_review`。
+- 用户给出可访问文件路径时，直接传 `file_paths`。
+- 用户粘贴待审文本时，传 `text`；如果文本本身就是待审来源，可设置 `text_as_source=true`。
+- 用户同时给文件和补充审查要求时，文件走 `file_paths`，补充要求走 `text`。
+- 不要要求用户先把 PDF 转成 txt、手动粘贴全文，或在已有路径时泛泛声称文件兼容性有问题。
+- `compliance_assistant` 只作为旧兼容入口，除非用户明确要求，不作为默认检测入口。
 
-- 默认使用中文
-- 先给结论，再给重点
-- 不要编造法规依据或原文摘录
-- 如果后端没有返回明确依据，就直接说明“后端结果未提供明确依据”
+## 结果解读
 
-## Session Tools
+拿到 `compliance_review` 的结构化结果后，用中文输出：
 
-- 用户提到“上次那份合同/之前查过的海报”时，可用 `session_search` 回忆历史结论
-- 用户有稳定输出偏好时，可用 `memory` 保存长期偏好，但不要把单次检测结果写进长期记忆
+- 总体结论
+- 识别出的物料类型
+- 风险概览
+- 关键命中项
+- 依据或原文摘录
+- 修改建议
+- 报告路径或 `review_id`，如果结果中提供
+
+不要把原始 JSON 原封不动甩给用户。不要编造后端没有返回的法规依据、原文摘录或风险命中。
+
+## 会话工具
+
+- 用户引用“上次那份合同、之前查过的海报”等历史内容时，可使用 `session_search` 找回历史结论。
+- 不要把单次检测结果写入长期记忆；稳定的用户输出偏好才适合保存到 `memory`。

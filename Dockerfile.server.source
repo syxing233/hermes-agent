@@ -1,0 +1,38 @@
+FROM nousresearch/hermes-agent:latest
+
+USER root
+
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg \
+    python3 \
+    python3-yaml \
+    make \
+    g++ \
+    && curl -fsSL https://deb.nodesource.com/setup_23.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/hermes
+
+COPY . /opt/hermes
+
+RUN npm ci --registry="${NPM_REGISTRY}" --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit && \
+    cd /opt/hermes/scripts/whatsapp-bridge && npm ci --registry="${NPM_REGISTRY}" --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit && \
+    cd /opt/hermes/hermes-web-ui && npm ci --registry="${NPM_REGISTRY}" --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit && npm run build && npm prune --omit=dev && \
+    npm cache clean --force && \
+    chmod +x /opt/hermes/run-hermes-local.sh /opt/hermes/run-hermes-webui-local.sh && \
+    chown -R hermes:hermes /opt/hermes
+
+USER hermes
+
+RUN /bin/sh -lc '. /opt/hermes/.venv/bin/activate && uv pip install --no-cache-dir -e ".[all]"'
+
+WORKDIR /opt/hermes
+
+ENV HERMES_PROJECT_ROOT=/opt/hermes
+ENV HERMES_HOME=/opt/hermes/.hermes-home
+ENV HOME=/opt/hermes/.hermes-home/home

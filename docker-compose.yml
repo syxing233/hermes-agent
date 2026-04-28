@@ -1,0 +1,25 @@
+services:
+  hermes-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile.server-cn
+      args:
+        NODE_BASE_IMAGE: docker.m.daocloud.io/library/node:23-bookworm
+        APT_MIRROR_HOST: mirrors.tuna.tsinghua.edu.cn
+        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
+        NPM_REGISTRY: https://mirrors.cloud.tencent.com/npm/
+        HERMES_PIP_EXTRAS: pty,mcp,cron,honcho,acp,web,compliance-pdf,compliance-graph
+    image: hermes-local-cn:latest
+    init: true
+    working_dir: /opt/hermes
+    ports:
+      - "8805:8805"
+    volumes:
+      - ./.hermes-home:/opt/hermes/.hermes-home
+    environment:
+      PORT: "8805"
+      AUTH_DISABLED: "false"
+      LOG_LEVEL: info
+      HERMES_HOME: /opt/hermes/.hermes-home
+      TERMINAL_CWD: /opt/hermes
+    restart: unless-stopped

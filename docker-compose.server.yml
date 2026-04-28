@@ -1,0 +1,21 @@
+services:
+  hermes-webui:
+    build:
+      context: .
+      dockerfile: Dockerfile.server.source
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    image: ${WEBUI_IMAGE:-hermes-webui-local-source:latest}
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - exec /opt/hermes/run-hermes-webui-local.sh ${PORT:-8805}
+    ports:
+      - "${PORT:-8805}:${PORT:-8805}"
+    volumes:
+      - ${HERMES_DATA_DIR:-./.hermes-home}:/opt/hermes/.hermes-home
+    environment:
+      - PORT=${PORT:-8805}
+      - AUTH_DISABLED=${AUTH_DISABLED:-false}
+      - TERMINAL_CWD=/opt/hermes
+    restart: unless-stopped

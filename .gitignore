@@ -5,13 +5,18 @@ __pycache__/
 .venv/
 .hermes-home/
 .vscode/
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-.env.development
-.env.test
+
+# Local environment files and secrets
+.env*
+!.env.example
+
+# Local OS/editor/runtime state
+.DS_Store
+.idea/
+.claude/
+.data/
+*.sqlite3
+*.log
 export*
 __pycache__/model_tools.cpython-310.pyc
 __pycache__/web_tools.cpython-310.pyc
@@ -58,6 +63,9 @@ hermes_cli/web_dist/
 # Release script temp files
 .release_notes.md
 mini-swe-agent/
+
+# Local server test notes may contain live hosts/tokens
+docs/server-compose-api.md
 
 # Nix
 .direnv/
