@@ -49,6 +49,20 @@ from gateway.platforms.base import (
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# File enrichment constants — mirror the Web UI client-side sets in
+# hermes-web-ui/packages/client/src/stores/hermes/chat.ts (lines 9-16).
+# Compliance extensions take priority over image extensions for overlap.
+# ---------------------------------------------------------------------------
+_COMPLIANCE_EXTENSIONS = frozenset([
+    '.pdf', '.docx', '.doc', '.xlsx', '.xlsm', '.zip',
+    '.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.tif', '.webp',
+])
+
+_IMAGE_EXTENSIONS = frozenset([
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.svg', '.ico',
+])
+
 # Default settings
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8642
@@ -274,6 +288,57 @@ def _openai_error(message: str, err_type: str = "invalid_request_error", param: 
             "code": code,
         }
     }
+
+
+def _enrich_user_message_with_file_paths(
+    user_message: str,
+    file_paths: List[str],
+) -> tuple:
+    """Inject file-path context into *user_message* based on extensions.
+
+    Returns ``(enriched_message, invalid_paths)`` where *invalid_paths*
+    lists file paths that do not exist on the local filesystem.
+
+    The enrichment mirrors the Web UI client-side logic (chat.ts:690-700)
+    and the Gateway messaging platform logic (run.py:3348-3360).
+    """
+    invalid_paths: List[str] = []
+    enrichment_parts: List[str] = []
+
+    for path in file_paths:
+        if not os.path.isfile(path):
+            invalid_paths.append(path)
+            continue
+
+        basename = os.path.basename(path)
+        ext = os.path.splitext(basename)[1].lower() if '.' in basename else ''
+
+        if ext in _COMPLIANCE_EXTENSIONS:
+            enrichment_parts.append(f'[File: {basename}]({path})')
+            enrichment_parts.append(
+                '[SYSTEM: The user attached a compliance-related file. '
+                'You MUST call the compliance_review tool with file_paths set to '
+                f'"{path}". Do NOT ask the user to paste text or convert '
+                'the file. The file path is accessible locally.]'
+            )
+        elif ext in _IMAGE_EXTENSIONS:
+            enrichment_parts.append(f'[User attached image: {basename}]({path})')
+        else:
+            enrichment_parts.append(
+                f'[The user sent a document: \'{basename}\'. '
+                f'The file is saved at: {path}. '
+                'If the user\'s request is already clear, use this local path directly '
+                'with the relevant tool. '
+                'Do not claim the path is incompatible or ask the user to convert/paste '
+                'the document unless a tool call actually fails because the file is missing '
+                'or unreadable.]'
+            )
+
+    if not enrichment_parts:
+        return user_message, invalid_paths
+
+    enriched = user_message + '\n\n' + '\n\n'.join(enrichment_parts)
+    return enriched, invalid_paths
 
 
 if AIOHTTP_AVAILABLE:
@@ -1543,6 +1608,30 @@ class APIServerAdapter(BasePlatformAdapter):
         if not user_message:
             return web.json_response(_openai_error("No user message found in input"), status=400)
 
+        # Enrich user_message with file_paths if provided.
+        file_paths = body.get("file_paths")
+        if file_paths:
+            if not isinstance(file_paths, list):
+                return web.json_response(
+                    _openai_error("'file_paths' must be an array of strings"),
+                    status=400,
+                )
+            for i, fp in enumerate(file_paths):
+                if not isinstance(fp, str):
+                    return web.json_response(
+                        _openai_error(f"file_paths[{i}] must be a string, got {type(fp).__name__}"),
+                        status=400,
+                    )
+            user_message, invalid_paths = _enrich_user_message_with_file_paths(user_message, file_paths)
+            if invalid_paths:
+                return web.json_response(
+                    _openai_error(
+                        f"The following file_paths do not exist on the server: {invalid_paths}",
+                        param="file_paths",
+                    ),
+                    status=400,
+                )
+
         # Truncation support
         if body.get("truncation") == "auto" and len(conversation_history) > 100:
             conversation_history = conversation_history[-100:]
@@ -1637,7 +1726,7 @@ class APIServerAdapter(BasePlatformAdapter):
         if idempotency_key:
             fp = _make_request_fingerprint(
                 body,
-                keys=["input", "instructions", "previous_response_id", "conversation", "model", "tools"],
+                keys=["input", "instructions", "previous_response_id", "conversation", "model", "tools", "file_paths"],
             )
             try:
                 result, usage = await _idem_cache.get_or_set(idempotency_key, fp, _compute_response)
@@ -2167,6 +2256,30 @@ class APIServerAdapter(BasePlatformAdapter):
         user_message = raw_input if isinstance(raw_input, str) else (raw_input[-1].get("content", "") if isinstance(raw_input, list) else "")
         if not user_message:
             return web.json_response(_openai_error("No user message found in input"), status=400)
+
+        # Enrich user_message with file_paths if provided.
+        file_paths = body.get("file_paths")
+        if file_paths:
+            if not isinstance(file_paths, list):
+                return web.json_response(
+                    _openai_error("'file_paths' must be an array of strings"),
+                    status=400,
+                )
+            for i, fp in enumerate(file_paths):
+                if not isinstance(fp, str):
+                    return web.json_response(
+                        _openai_error(f"file_paths[{i}] must be a string, got {type(fp).__name__}"),
+                        status=400,
+                    )
+            user_message, invalid_paths = _enrich_user_message_with_file_paths(user_message, file_paths)
+            if invalid_paths:
+                return web.json_response(
+                    _openai_error(
+                        f"The following file_paths do not exist on the server: {invalid_paths}",
+                        param="file_paths",
+                    ),
+                    status=400,
+                )
 
         run_id = f"run_{uuid.uuid4().hex}"
         loop = asyncio.get_running_loop()

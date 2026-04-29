@@ -4,7 +4,6 @@ import base64
 import hashlib
 import json
 import re
-import sqlite3
 import subprocess
 import tempfile
 from dataclasses import dataclass, replace
@@ -27,7 +26,6 @@ _DEFAULT_PRIMARY_MODEL = "deepseek-chat"
 _DEFAULT_PROMPT_VERSION = "material-classification-v2"
 _DEFAULT_SMALL_REVIEW_THRESHOLD = 0.82
 _DEFAULT_DIRECT_BIG_MIN_PARSE_CONFIDENCE = 0.45
-_ROUTING_POLICY_VERSION = "cascade-v1"
 _ALLOWED_TYPES = (
     MaterialType.CLAUSE_BOOK,
     MaterialType.POSTER,
@@ -60,11 +58,11 @@ _CLASSIFICATION_RULES = """\
 如果文件主要用于产品推广、销售辅助或客户触达，内容围绕产品亮点、保障优势、适用人群、购买理由、方案推荐、活动宣传、销售话术、案例展示等展开，具有明显营销转化导向，虽然可能包含部分产品说明或条款摘要，但重点不在正式定义合同规则，也不在形成法律协议，则判定为营销物料。
 4. 合同：
 如果文件的核心作用是确认双方或多方之间的法律关系和约束，通常包含签约主体、权利义务、服务或合作内容、费用与结算、期限、违约责任、保密、争议解决、签字盖章等内容，语言具有明确法律约束性，目的在于达成正式协议而不是解释保险产品，则判定为合同。
-5. 产品说明书：
-如果文件属于保险产品说明书、投保说明书或类似解读性规范文件，核心作用是帮助用户理解产品、条款或投保事项，通常会包含“重要提示、产品特色、投保范围、保障责任、责任免除、保费说明、犹豫期、示例演示”等模块，并常明确说明“仅供理解参考，以保险条款或正式合同约定为准”，即它是对条款的说明和辅助解读，而非条款原文本身，则判定为产品说明书。
+5. 说明书：
+如果文件属于保险产品说明书、投保说明书或类似解读性规范文件，核心作用是帮助用户理解产品、条款或投保事项，通常会包含“重要提示、产品特色、投保范围、保障责任、责任免除、保费说明、犹豫期、示例演示”等模块，并常明确说明“仅供理解参考，以保险条款或正式合同约定为准”，即它是对条款的说明和辅助解读，而非条款原文本身，则判定为说明书。你上传的样例就符合这一类。
 
 强区分要求：
-- “条款书”和“产品说明书”的首要区别是：条款书是最终适用依据；产品说明书是解释或辅助理解材料。
+- “条款书”和“说明书”的首要区别是：条款书是最终适用依据；说明书是解释或辅助理解材料。
 - “海报”和“营销物料”的首要区别是：海报以视觉展示和单页传播为主；营销物料以销售转化内容为主。
 - “合同”和保险类材料的首要区别是：合同用于确认多方权利义务和法律关系。
 - 如果输入里提供了 hint_material_type，它只作为弱提示；一旦与正文、版式预览或图片内容冲突，必须以后者为准。
@@ -74,6 +72,7 @@ _CLASSIFICATION_RULES = """\
 - 字段固定为：material_type({material_types}), contract_type, statement(甲方/乙方), scale(强势/均势), confidence(0-1), reason。
 - reason 必须写清楚为什么判这个类别，至少 8 个字。
 - 如果不是合同，contract_type / statement / scale 置为空字符串。
+- 判定为说明书时，material_type 输出“产品说明书”。
 - 即使信息不完整，也必须在五类中选一个最可能的结果。
 """
 
@@ -128,7 +127,6 @@ class _SourceBundle:
     parse_confidence: float
     warnings: tuple[str, ...]
     preview_assets: tuple[_PreviewAsset, ...]
-    cache_key: str
 
 
 @dataclass(frozen=True)
@@ -326,15 +324,6 @@ class MaterialClassificationService:
         hint_material_type: MaterialType | str | None = None,
     ) -> AutoClassification:
         normalized_hint = _parse_material_type(hint_material_type)
-        cache_key = self._build_cache_key(
-            source_name=source_name,
-            input_text=input_text,
-            local_path=local_path,
-            hint_material_type=normalized_hint,
-        )
-        cached = self._load_cached_result(cache_key)
-        if cached is not None:
-            return replace(cached, source="cache", model_stage="cache_hit", route="cache")
 
         is_image = (
             local_path is not None
@@ -348,7 +337,6 @@ class MaterialClassificationService:
                 hint_material_type=hint_text,
             )
             if external_result is not None:
-                self._save_cached_result(cache_key, external_result)
                 return external_result
 
         source = self._build_source_bundle(
@@ -356,7 +344,6 @@ class MaterialClassificationService:
             input_text=input_text,
             local_path=local_path,
             hint_material_type=normalized_hint,
-            cache_key=cache_key,
         )
 
         route = self._route_source(source)
@@ -381,7 +368,6 @@ class MaterialClassificationService:
                 escalated_to_big=True,
                 decision_reasons=route.reasons,
             )
-            self._save_cached_result(source.cache_key, final_result)
             return final_result
 
         primary = self._call_model(
@@ -436,7 +422,6 @@ class MaterialClassificationService:
             decision_reasons=review_decision.reasons,
             review_attempted=review_attempt is not None,
         )
-        self._save_cached_result(source.cache_key, final_result)
         return final_result
 
     def _call_model(
@@ -580,45 +565,6 @@ class MaterialClassificationService:
             ambiguous_pair=ambiguous_pair,
         )
 
-    def _build_cache_key(
-        self,
-        *,
-        source_name: str,
-        input_text: str | None,
-        local_path: str | None,
-        hint_material_type: MaterialType | str | None,
-    ) -> str:
-        normalized_text = (input_text or "").strip()
-        normalized_hint = _parse_material_type(hint_material_type)
-        hint_material_text = normalized_hint.value if normalized_hint is not None else ""
-        source_path = str(Path(local_path)) if local_path else None
-        content_hash = _hash_source(
-            source_name=source_name,
-            source_path=source_path,
-            normalized_text=normalized_text,
-            normalized_context="",
-        )
-        return _hash_text(
-            json.dumps(
-                {
-                    "routing_policy_version": _ROUTING_POLICY_VERSION,
-                    "source_name": source_name,
-                    "content_hash": content_hash,
-                    "hint_material_type": hint_material_text,
-                    "classification_model": self.classification_model,
-                    "review_model": self.review_model,
-                    "prompt_version": self.prompt_version,
-                    "small_review_threshold": self.small_review_threshold,
-                    "direct_big_min_parse_confidence": self.direct_big_min_parse_confidence,
-                    "direct_big_parsers": sorted(self.direct_big_parsers),
-                    "review_on_hint_conflict": self.review_on_hint_conflict,
-                    "review_on_ambiguous_types": self.review_on_ambiguous_types,
-                },
-                ensure_ascii=False,
-                sort_keys=True,
-            )
-        )
-
     def _build_source_bundle(
         self,
         *,
@@ -626,7 +572,6 @@ class MaterialClassificationService:
         input_text: str | None,
         local_path: str | None,
         hint_material_type: MaterialType | str | None,
-        cache_key: str,
     ) -> _SourceBundle:
         normalized_text = (input_text or "").strip()
         normalized_hint = _parse_material_type(hint_material_type)
@@ -670,7 +615,6 @@ class MaterialClassificationService:
             parse_confidence=parse_confidence,
             warnings=tuple(warnings),
             preview_assets=tuple(preview_assets),
-            cache_key=cache_key,
         )
 
     def _build_preview_assets(self, path: Path) -> list[_PreviewAsset]:
@@ -681,94 +625,6 @@ class MaterialClassificationService:
         if suffix == ".pdf":
             return _pdf_to_preview_assets(path, max_pages=self.preview_pages)
         return []
-
-    def _load_cached_result(self, cache_key: str) -> AutoClassification | None:
-        if not self.cache_db_path:
-            return None
-        try:
-            self._ensure_cache_table()
-            with sqlite3.connect(self.cache_db_path) as conn:
-                row = conn.execute(
-                    "SELECT payload FROM material_classification_cache WHERE cache_key = ?",
-                    (cache_key,),
-                ).fetchone()
-        except sqlite3.Error:
-            return None
-
-        if not row or not row[0]:
-            return None
-        try:
-            payload = json.loads(str(row[0]))
-            result = _classification_from_payload(payload, allow_empty_reason=False)
-            return replace(
-                result,
-                model_stage=str(payload.get("model_stage") or result.model_stage),
-                route=str(payload.get("route") or ""),
-                parser=str(payload.get("parser") or ""),
-                parse_confidence=_parse_confidence(payload.get("parse_confidence"), 0.0),
-                hint_conflict=bool(payload.get("hint_conflict")),
-                ambiguous_pair=str(payload.get("ambiguous_pair") or ""),
-                escalated_to_big=bool(payload.get("escalated_to_big")),
-                decision_reasons=tuple(_safe_string_list(payload.get("decision_reasons"))),
-                review_attempted=bool(payload.get("review_attempted")),
-            )
-        except Exception:
-            return None
-
-    def _save_cached_result(self, cache_key: str, result: AutoClassification) -> None:
-        if not self.cache_db_path:
-            return
-        try:
-            self._ensure_cache_table()
-            with sqlite3.connect(self.cache_db_path) as conn:
-                conn.execute(
-                    """
-                    INSERT INTO material_classification_cache (cache_key, payload)
-                    VALUES (?, ?)
-                    ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload
-                    """,
-                    (
-                        cache_key,
-                        json.dumps(
-                            {
-                                "material_type": result.material_type.value,
-                                "confidence": result.confidence,
-                                "reason": result.reason,
-                                "contract_type": result.contract_type or "",
-                                "statement": result.statement or "",
-                                "scale": result.scale or "",
-                                "model_stage": result.model_stage,
-                                "route": result.route,
-                                "parser": result.parser,
-                                "parse_confidence": result.parse_confidence,
-                                "hint_conflict": result.hint_conflict,
-                                "ambiguous_pair": result.ambiguous_pair,
-                                "escalated_to_big": result.escalated_to_big,
-                                "decision_reasons": list(result.decision_reasons),
-                                "review_attempted": result.review_attempted,
-                            },
-                            ensure_ascii=False,
-                        ),
-                    ),
-                )
-                conn.commit()
-        except sqlite3.Error:
-            return
-
-    def _ensure_cache_table(self) -> None:
-        cache_path = Path(self.cache_db_path)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.cache_db_path) as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS material_classification_cache (
-                    cache_key TEXT PRIMARY KEY,
-                    payload TEXT NOT NULL
-                )
-                """
-            )
-            conn.commit()
-
 
 AutoClassificationService = MaterialClassificationService
 
@@ -1046,12 +902,6 @@ def _normalize_parser_names(value: Any) -> tuple[str, ...]:
     return tuple(_dedupe_preserve_order(normalized))
 
 
-def _safe_string_list(value: Any) -> list[str]:
-    if not isinstance(value, (list, tuple)):
-        return []
-    return [str(piece).strip() for piece in value if str(piece).strip()]
-
-
 def _dedupe_preserve_order(values: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -1061,48 +911,6 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
         seen.add(value)
         result.append(value)
     return result
-
-
-def _hash_source(
-    *,
-    source_name: str,
-    source_path: str | None,
-    normalized_text: str,
-    normalized_context: str,
-) -> str:
-    file_digest = ""
-    if source_path:
-        try:
-            file_digest = _sha256_file(Path(source_path))
-        except Exception:
-            file_digest = ""
-    return _hash_text(
-        json.dumps(
-            {
-                "source_name": source_name,
-                "source_path": source_path or "",
-                "file_digest": file_digest,
-                "text": normalized_text,
-                "context": normalized_context,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        )
-    )
-
-def _hash_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as fh:
-        while True:
-            chunk = fh.read(1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _file_to_preview_asset(path: Path) -> _PreviewAsset | None:
