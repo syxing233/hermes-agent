@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import json
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -74,7 +75,23 @@ def coerce_file_paths(
     if not file_paths:
         return []
 
-    raw_paths = [file_paths] if isinstance(file_paths, (str, Path)) else list(file_paths)
+    if isinstance(file_paths, str):
+        raw_value = file_paths.strip()
+        if raw_value.startswith("["):
+            try:
+                parsed = json.loads(raw_value)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, list):
+                raw_paths = parsed
+            else:
+                raw_paths = [file_paths]
+        else:
+            raw_paths = [file_paths]
+    elif isinstance(file_paths, Path):
+        raw_paths = [file_paths]
+    else:
+        raw_paths = list(file_paths)
     base_dir = Path(str(cwd)) if cwd is not None else Path.cwd()
     resolved: list[Path] = []
     for raw in raw_paths:

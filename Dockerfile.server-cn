@@ -1,10 +1,12 @@
+# syntax=docker/dockerfile:1.7
 ARG NODE_BASE_IMAGE=docker.m.daocloud.io/library/node:23-bookworm
+FROM ghcr.io/astral-sh/uv:0.11.6-python3.13-trixie@sha256:b3c543b6c4f23a5f2df22866bd7857e5d304b67a564f4feab6ac22044dde719b AS uv_source
 FROM ${NODE_BASE_IMAGE}
 
 ARG APT_MIRROR_HOST=mirrors.tuna.tsinghua.edu.cn
 ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ARG NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/
-ARG HERMES_PIP_EXTRAS=pty,mcp,cron,honcho,acp,web,compliance-pdf,compliance-graph
+ARG HERMES_PIP_EXTRAS=web,compliance-pdf
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -13,7 +15,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     NPM_CONFIG_REGISTRY=${NPM_REGISTRY} \
     npm_config_registry=${NPM_REGISTRY} \
-    PLAYWRIGHT_BROWSERS_PATH=/opt/hermes/.playwright
+    NPM_CONFIG_REPLACE_REGISTRY_HOST=registry.npmjs.org \
+    npm_config_replace_registry_host=registry.npmjs.org
+
+COPY --chmod=0755 --from=uv_source /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
 
 RUN set -eux; \
     if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
@@ -41,24 +46,49 @@ RUN set -eux; \
 
 WORKDIR /opt/hermes
 
+COPY hermes-web-ui/package*.json ./hermes-web-ui/
+RUN --mount=type=cache,target=/root/.npm \
+    set -eux; \
+    echo "Installing hermes-web-ui npm dependencies"; \
+    cd /opt/hermes/hermes-web-ui; \
+    if [ -f package-lock.json ]; then \
+      npm ci --registry="${NPM_REGISTRY}" --fetch-retries=8 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit; \
+    else \
+      npm install --registry="${NPM_REGISTRY}" --fetch-retries=8 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit; \
+    fi
+
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    set -eux; \
+    echo "Creating Python virtualenv and installing Python dependencies from pyproject.toml"; \
+    extra_args=""; \
+    old_ifs="$IFS"; \
+    IFS=","; \
+    for extra in ${HERMES_PIP_EXTRAS}; do \
+      extra_args="${extra_args} --extra ${extra}"; \
+    done; \
+    IFS="$old_ifs"; \
+    uv venv; \
+    uv pip install -r pyproject.toml ${extra_args}
+
 COPY . /opt/hermes
 
-RUN set -eux; \
-    python3 -m venv /opt/hermes/.venv; \
-    . /opt/hermes/.venv/bin/activate; \
-    python -m pip install --upgrade pip setuptools wheel; \
-    npm ci --registry="${NPM_REGISTRY}" --fetch-retries=8 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit; \
-    cd /opt/hermes/scripts/whatsapp-bridge; \
-    npm ci --registry="${NPM_REGISTRY}" --fetch-retries=8 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit; \
+RUN --mount=type=cache,target=/root/.npm \
+    set -eux; \
+    echo "Building hermes-web-ui"; \
     cd /opt/hermes/hermes-web-ui; \
-    npm ci --registry="${NPM_REGISTRY}" --fetch-retries=8 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit || \
-      npm install --registry="${NPM_REGISTRY}" --fetch-retries=8 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000 --fetch-timeout=300000 --no-audit; \
     npm run build; \
-    npm prune --omit=dev; \
-    cd /opt/hermes; \
-    python -m pip install -e ".[${HERMES_PIP_EXTRAS}]"; \
-    chmod +x /opt/hermes/run-hermes-local.sh /opt/hermes/run-hermes-webui-local.sh /opt/hermes/docker-entrypoint.server-cn.sh; \
-    npm cache clean --force
+    npm prune --omit=dev
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    set -eux; \
+    echo "Installing Hermes package in editable mode"; \
+    . /opt/hermes/.venv/bin/activate; \
+    uv pip install --no-deps -e ".[${HERMES_PIP_EXTRAS}]"
+
+RUN set -eux; \
+    echo "Finalizing executable scripts"; \
+    chmod +x /opt/hermes/run-hermes-local.sh /opt/hermes/run-hermes-webui-local.sh /opt/hermes/docker-entrypoint.server-cn.sh
 
 EXPOSE 8805
 

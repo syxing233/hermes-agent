@@ -145,3 +145,11 @@ def test_coerce_file_paths_list_input(tmp_path):
 
     result = coerce_file_paths([str(a), str(b)])
     assert len(result) == 2
+
+
+def test_coerce_file_paths_accepts_json_array_string(tmp_path):
+    sample = tmp_path / "poster.png"
+    sample.write_text("image", encoding="utf-8")
+
+    result = coerce_file_paths(f'["{sample}"]')
+    assert result == [sample.resolve()]

@@ -230,11 +230,14 @@ def build_contract_payload(req: ComplianceRequest, upload_file_id: str) -> dict:
         [item.model_dump(mode="json") for item in req.json_rules],
         ensure_ascii=False,
     )
+    input_type = "document"
+    if req.input_file and req.input_file.type in {"document", "image"}:
+        input_type = req.input_file.type
 
     return {
         "inputs": {
             "f": {
-                "type": "document",
+                "type": input_type,
                 "transfer_method": "local_file",
                 "upload_file_id": upload_file_id,
             },
@@ -364,6 +367,11 @@ def _extract_answer_from_payload(payload: dict[str, Any]) -> str:
         candidate = payload["data"].get("answer")
         if isinstance(candidate, str) and candidate.strip():
             return candidate.strip()
+        outputs = payload["data"].get("outputs")
+        if isinstance(outputs, dict):
+            candidate = outputs.get("answer")
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
 
     return ""
 
